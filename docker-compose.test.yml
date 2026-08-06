@@ -1,0 +1,31 @@
+# Postgres + Redis with published host ports, for integration tests and local
+# `pnpm --filter @vyzus/api db:migrate` runs. The main docker-compose.yml
+# keeps these services on the internal network only; this file exposes them.
+name: vyzus-test
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: vyzus_test
+      POSTGRES_USER: vyzus
+      POSTGRES_PASSWORD: vyzus
+    ports:
+      - '5433:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U vyzus -d vyzus_test']
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6380:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 20

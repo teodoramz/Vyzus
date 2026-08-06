@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint and format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: ESLint
+        run: pnpm lint
+      - name: Prettier
+        run: pnpm format:check
+
+  build-test:
+    name: Build, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      # Mirrors docker-compose.test.yml (host ports 5433/6380 are the suite defaults).
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: vyzus_test
+          POSTGRES_USER: vyzus
+          POSTGRES_PASSWORD: vyzus
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U vyzus -d vyzus_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6380:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      VYZUS_TEST_NO_DOCKER: '1' # services above replace docker-compose.test.yml
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4 # version pinned by packageManager in package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Cache Playwright browser
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('apps/worker/package.json') }}
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @vyzus/worker exec playwright install --with-deps chromium
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test (integration — real Postgres/Redis/BullMQ/Chromium)
+        run: pnpm test
+
+  docker-images:
+    name: Docker image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      matrix:
+        image: [api, worker, dashboard]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infra/${{ matrix.image }}.Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max
+
+  playwright-lockstep:
+    name: Playwright version lockstep
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: worker package.json playwright == worker.Dockerfile image tag
+        run: |
+          pkg_version=$(node -p "require('./apps/worker/package.json').dependencies.playwright")
+          img_version=$(grep -oPm1 'playwright:v\K[0-9.]+' infra/worker.Dockerfile)
+          echo "package.json: $pkg_version — Dockerfile: v$img_version"
+          test "$pkg_version" = "$img_version" || {
+            echo "::error::playwright version must match the tag in infra/worker.Dockerfile"; exit 1; }

@@ -1,0 +1,30 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    ignore:
+      # playwright must stay in lockstep with the worker.Dockerfile image tag
+      # (enforced by the playwright-lockstep CI job) — bump both together.
+      - dependency-name: playwright
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directories:
+      - /infra
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # See playwright note above — the worker image tag is version-locked.
+      - dependency-name: mcr.microsoft.com/playwright

@@ -1,0 +1,39 @@
+/* Self-hosted (no CDN calls at runtime) — geometric sans for UI, monospace
+   for anything that needs to align in columns: metrics, IPs, timestamps. */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/500.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/jetbrains-mono/600.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+/* Clinical command center: obsidian in dark mode (not pure black), a soft
+   aviation-dashboard gray in light mode. */
+body {
+  @apply bg-gray-50 text-slate-900 antialiased;
+  @apply dark:bg-zinc-950 dark:text-zinc-100;
+}
+
+/* Monaco needs an explicit height context from every ancestor. */
+.monaco-wrapper {
+  height: 420px;
+}
+
+::selection {
+  background: rgba(42, 120, 214, 0.25);
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}

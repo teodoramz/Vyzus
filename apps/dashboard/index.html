@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2024%2024'%3E%3Ccircle%20cx%3D'12'%20cy%3D'12'%20r%3D'8.5'%20fill%3D'none'%20stroke%3D'%232a78d6'%20stroke-width%3D'1.8'%20opacity%3D'0.4'%2F%3E%3Ccircle%20cx%3D'12'%20cy%3D'12'%20r%3D'5'%20fill%3D'none'%20stroke%3D'%232a78d6'%20stroke-width%3D'2.2'%20opacity%3D'0.8'%2F%3E%3Ccircle%20cx%3D'12'%20cy%3D'12'%20r%3D'2.5'%20fill%3D'%232a78d6'%2F%3E%3C%2Fsvg%3E"
+    />
+    <title>Vyzus</title>
+    <script>
+      // Applied synchronously (before first paint) so every page — including
+      // /login, which never mounts the Header that owns the toggle — shows
+      // the theme the user last explicitly chose. Default is light: we do
+      // NOT fall back to prefers-color-scheme here, matching useDarkMode's
+      // initial() logic exactly.
+      (function () {
+        try {
+          if (localStorage.getItem('vyzus.theme') === 'dark') {
+            document.documentElement.classList.add('dark');
+            document.querySelector('meta[name="color-scheme"]').setAttribute('content', 'dark');
+          }
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

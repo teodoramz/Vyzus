@@ -1,0 +1,6 @@
+{
+  "name": "Example Landing",
+  "landingUrl": "https://example.com",
+  "tags": ["demo"],
+  "intervalMinutes": 5
+}

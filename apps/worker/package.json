@@ -1,0 +1,36 @@
+{
+  "name": "@vyzus/worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.js",
+    "./testkit": {
+      "types": "./dist/testkit.d.ts",
+      "import": "./dist/testkit.js"
+    }
+  },
+  "scripts": {
+    "build": "tsup src/index.ts src/sandbox/runner-harness.ts src/testkit.ts --format esm --sourcemap --dts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@vyzus/shared": "workspace:*",
+    "playwright": "1.54.0",
+    "bullmq": "^5.34.0",
+    "ioredis": "^5.4.0",
+    "drizzle-orm": "^0.38.0",
+    "postgres": "^3.4.0",
+    "pino": "^9.5.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsup": "^8.3.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}

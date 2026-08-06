@@ -1,0 +1,118 @@
+name: vyzus
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-vyzus}
+      POSTGRES_USER: ${POSTGRES_USER:-vyzus}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--maxmemory', '256mb', '--maxmemory-policy', 'noeviction']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: named volumes are created root-owned; give the artifacts volume to
+  # uid 1001 (the worker's pwuser — the api runs as the same uid, see below) so
+  # both services can write/delete artifact files.
+  volume-init:
+    image: postgres:16-alpine # reuse an already-pulled image for its chown
+    entrypoint: ['chown', '-R', '1001:1001', '/data/artifacts']
+    restart: 'no'
+    volumes:
+      - artifacts:/data/artifacts
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/api.Dockerfile
+    restart: unless-stopped
+    # Same uid as the worker's pwuser so retention can delete worker-written files.
+    user: '1001:1001'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vyzus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vyzus}
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      NODE_ENV: production
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/v1/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: infra/worker.Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-vyzus}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-vyzus}
+      REDIS_URL: redis://redis:6379
+      ARTIFACTS_DIR: /data/artifacts
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+      NODE_ENV: production
+    volumes:
+      - artifacts:/data/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      volume-init:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    # Playwright/Chromium needs a bigger shared memory segment than the 64MB default
+    shm_size: 1gb
+    deploy:
+      resources:
+        limits:
+          memory: 2g
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: infra/dashboard.Dockerfile
+    restart: unless-stopped
+    ports:
+      - '${DASHBOARD_PORT:-8080}:80'
+    depends_on:
+      - api
+
+volumes:
+  pgdata:
+  redisdata:
+  artifacts:

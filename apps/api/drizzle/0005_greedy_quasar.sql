@@ -1,0 +1,1 @@
+ALTER TABLE "checks" ADD COLUMN "last_screenshot_at" timestamp with time zone;

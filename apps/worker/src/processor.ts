@@ -1,0 +1,372 @@
+// Job processor for the `checks` queue. Handles scheduled/manual/screenshot
+// runs (persisted) and dry-runs (result returned inline, nothing persisted).
+// A malformed or stale job must never crash the worker: it is logged and the
+// job is failed/skipped (verification gate in docs/06).
+import { randomUUID } from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
+import type { Job } from 'bullmq';
+import { Queue } from 'bullmq';
+import type { Redis } from 'ioredis';
+import type { Logger } from 'pino';
+import { eq, sql } from 'drizzle-orm';
+import {
+  QUEUE_NAMES,
+  CHECK_JOB_NAMES,
+  RUN_FINISHED_CHANNEL,
+  INCIDENT_OPENED_CHANNEL,
+  INCIDENT_RESOLVED_CHANNEL,
+  checkJobPayloadSchema,
+  dryRunJobPayloadSchema,
+  uptimeConfigSchema,
+  journeyConfigSchema,
+  shouldCaptureScreenshot,
+  type AlertJobPayload,
+  type AppAuthConfig,
+  type DryRunResult,
+  type RunTrigger,
+  type WsEvent,
+} from '@vyzus/shared';
+import { decryptJson } from '@vyzus/shared/crypto';
+import { applications, checks, runs, type ApplicationRow, type CheckRow } from '@vyzus/shared/db';
+import type { WorkerConfig } from './config.js';
+import type { WorkerDatabase } from './db.js';
+import { ArtifactStore } from './artifacts.js';
+import { executeUptime } from './executors/uptime.js';
+import { executeJourney } from './executors/journey.js';
+import { executePort } from './executors/port.js';
+import type { ExecutionResult } from './executors/types.js';
+import { evaluateIncident } from './incidents.js';
+
+export interface ProcessorDeps {
+  db: WorkerDatabase;
+  /** Non-blocking connection used for PUBLISH + the alerts producer queue. */
+  redis: Redis;
+  config: WorkerConfig;
+  log: Logger;
+  store: ArtifactStore;
+}
+
+/** Postgres error 23503 (foreign_key_violation), possibly wrapped by the ORM. */
+function isForeignKeyViolation(err: unknown): boolean {
+  for (let e = err; e !== null && typeof e === 'object'; e = (e as { cause?: unknown }).cause ?? null) {
+    if ((e as { code?: unknown }).code === '23503') return true;
+  }
+  return false;
+}
+
+/**
+ * Persists lastStatus/lastRunAt and (uptime only) the screenshot-streak dedup
+ * in one atomic step. Screenshot dedup: a run whose pass/fail outcome matches
+ * the check's *previous* run supersedes that streak's screenshot (old file
+ * deleted, old run's screenshot_path nulled) instead of accumulating one
+ * near-identical file per run; a status change starts a fresh streak whose
+ * screenshot is kept, since it marks the transition. Journey checks are never
+ * deduped — their failure screenshots stay paired 1:1 with a trace.
+ *
+ * Concurrent runs of the *same* check are possible (a manual/screenshot
+ * trigger landing next to a scheduled tick, or a burst of overdue repeatable
+ * jobs draining after a worker restart) — without serialization, two runs can
+ * both read the same stale "current streak" pointer and each supersede it
+ * independently, leaking a stray undeleted file. A Postgres advisory lock
+ * keyed by the check id (auto-released at transaction end, no deadlock/leak
+ * risk) plus a fresh in-transaction read of the pointer closes that race.
+ */
+async function updateCheckAfterRun(
+  db: WorkerDatabase,
+  store: ArtifactStore,
+  check: Pick<CheckRow, 'id' | 'type'>,
+  startedAt: Date,
+  result: Pick<ExecutionResult, 'status' | 'screenshotPath'>,
+  runId: string,
+): Promise<void> {
+  let fileToDelete: string | null = null;
+
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${check.id}))`);
+
+    const patch: { lastStatus: ExecutionResult['status']; lastRunAt: Date } & Partial<
+      Pick<CheckRow, 'currentScreenshotRunId' | 'currentScreenshotPath' | 'lastScreenshotAt'>
+    > = { lastStatus: result.status, lastRunAt: startedAt };
+
+    if (check.type === 'uptime' && result.screenshotPath) {
+      const [fresh] = await tx
+        .select({
+          lastStatus: checks.lastStatus,
+          currentScreenshotRunId: checks.currentScreenshotRunId,
+          currentScreenshotPath: checks.currentScreenshotPath,
+        })
+        .from(checks)
+        .where(eq(checks.id, check.id));
+      if (fresh) {
+        const bucket = result.status === 'passed';
+        const prevBucket = fresh.lastStatus === null ? null : fresh.lastStatus === 'passed';
+        if (prevBucket === bucket && fresh.currentScreenshotRunId && fresh.currentScreenshotPath) {
+          fileToDelete = fresh.currentScreenshotPath;
+          await tx.update(runs).set({ screenshotPath: null }).where(eq(runs.id, fresh.currentScreenshotRunId));
+        }
+        patch.currentScreenshotRunId = runId;
+        patch.currentScreenshotPath = result.screenshotPath;
+        // Drives the periodic refresh cadence. Advanced on every stored
+        // screenshot, including ones that supersede the current streak, so a
+        // long healthy stretch refreshes on schedule rather than never.
+        patch.lastScreenshotAt = startedAt;
+      }
+    }
+
+    await tx.update(checks).set(patch).where(eq(checks.id, check.id));
+  });
+
+  if (fileToDelete) await store.deleteFile(fileToDelete);
+}
+
+export function createProcessor(deps: ProcessorDeps): {
+  process: (job: Job) => Promise<DryRunResult | void>;
+  close: () => Promise<void>;
+} {
+  const { db, redis, config, log, store } = deps;
+  const alertsQueue = new Queue(QUEUE_NAMES.alerts, { connection: redis });
+
+  async function publish(channel: string, event: WsEvent): Promise<void> {
+    await redis.publish(channel, JSON.stringify(event)).catch((err) => {
+      log.warn({ err, channel }, 'pub/sub publish failed');
+    });
+  }
+
+  function decryptAuthConfig(app: ApplicationRow): AppAuthConfig | null {
+    if (!app.authConfigEnc) return null;
+    try {
+      return decryptJson<AppAuthConfig>(app.authConfigEnc, config.ENCRYPTION_KEY);
+    } catch (err) {
+      log.error({ err, appId: app.id }, 'failed to decrypt app credentials — running without them');
+      return null;
+    }
+  }
+
+  async function loadCheckWithApp(checkId: string): Promise<{ check: CheckRow; app: ApplicationRow } | null> {
+    const [row] = await db
+      .select({ check: checks, app: applications })
+      .from(checks)
+      .innerJoin(applications, eq(checks.appId, applications.id))
+      .where(eq(checks.id, checkId))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async function execute(
+    check: Pick<CheckRow, 'type' | 'config' | 'timeoutMs' | 'lastStatus' | 'lastScreenshotAt'>,
+    app: Pick<ApplicationRow, 'id' | 'landingUrl'>,
+    authConfig: AppAuthConfig | null,
+    trigger: RunTrigger,
+    artifactTarget: { appId: string; runId: string } | null,
+  ): Promise<ExecutionResult> {
+    const artifacts = artifactTarget ? { store, target: artifactTarget } : undefined;
+    if (check.type === 'uptime') {
+      const uptimeConfig = uptimeConfigSchema.parse(check.config);
+      if (uptimeConfig.mode === 'port') {
+        return executePort({ config: uptimeConfig, timeoutMs: check.timeoutMs });
+      }
+
+      // The policy depends on this run's own outcome (a failure is always
+      // worth a picture), so it is evaluated by the executor once the status
+      // is known and the page is still open — one navigation, no wasted
+      // capture. Pressing the Screenshot button skips the policy entirely:
+      // that means "show me now", whatever the mode says.
+      return executeUptime(
+        {
+          landingUrl: app.landingUrl,
+          authConfig,
+          config: uptimeConfig,
+          timeoutMs: check.timeoutMs,
+          captureScreenshot:
+            trigger === 'screenshot'
+              ? () => true
+              : (status) =>
+                  shouldCaptureScreenshot({
+                    mode: uptimeConfig.screenshot,
+                    refreshMinutes: uptimeConfig.screenshotRefreshMinutes,
+                    status,
+                    previousStatus: check.lastStatus,
+                    lastScreenshotAt: check.lastScreenshotAt,
+                  }),
+        },
+        artifacts,
+      );
+    }
+    const journeyConfig = journeyConfigSchema.parse(check.config);
+    return executeJourney({ config: journeyConfig, timeoutMs: check.timeoutMs }, artifacts);
+  }
+
+  async function processDryRun(job: Job): Promise<DryRunResult> {
+    const parsed = dryRunJobPayloadSchema.safeParse(job.data);
+    if (!parsed.success) {
+      log.error({ jobId: job.id, issues: parsed.error.issues }, 'malformed dry-run payload');
+      return { status: 'error', durationMs: 0, metrics: null, errorMessage: 'Malformed dry-run payload' };
+    }
+    const payload = parsed.data;
+    const [app] = await db.select().from(applications).where(eq(applications.id, payload.appId)).limit(1);
+    if (!app) {
+      return { status: 'error', durationMs: 0, metrics: null, errorMessage: 'Application not found' };
+    }
+    try {
+      const result = await execute(
+        {
+          type: payload.type,
+          config: payload.config as CheckRow['config'],
+          timeoutMs: payload.timeoutMs,
+          // A dry run has no persisted check behind it, so there is no
+          // history for the screenshot policy to consider — and it passes a
+          // null artifact target anyway, so nothing is stored either way.
+          lastStatus: null,
+          lastScreenshotAt: null,
+        },
+        app,
+        decryptAuthConfig(app),
+        'manual',
+        null, // no artifacts persisted for dry-runs
+      );
+      return {
+        status: result.status,
+        durationMs: result.durationMs,
+        metrics: result.metrics,
+        errorMessage: result.errorMessage,
+      };
+    } catch (err) {
+      log.error({ err, jobId: job.id }, 'dry-run execution crashed');
+      return {
+        status: 'error',
+        durationMs: 0,
+        metrics: null,
+        errorMessage: err instanceof Error ? err.message : 'Dry-run failed',
+      };
+    }
+  }
+
+  async function processRun(job: Job): Promise<void> {
+    const parsed = checkJobPayloadSchema.safeParse(job.data);
+    if (!parsed.success) {
+      // Log + fail the job; never crash the worker loop.
+      log.error({ jobId: job.id, data: job.data, issues: parsed.error.issues }, 'malformed check job');
+      throw new Error('Malformed check job payload');
+    }
+    const { checkId, trigger } = parsed.data;
+
+    const loaded = await loadCheckWithApp(checkId);
+    if (!loaded) {
+      log.warn({ checkId }, 'check no longer exists — skipping (stale schedule)');
+      return;
+    }
+    const { check, app } = loaded;
+
+    // Disabled check/app: scheduled ticks are skipped quietly (reconcile will
+    // clean the schedule up); explicit manual/screenshot requests still run.
+    if (trigger === 'schedule' && (!check.enabled || !app.enabled)) {
+      log.info({ checkId }, 'check disabled — skipping scheduled run');
+      return;
+    }
+
+    // FR-3.2: 0–15 s jitter on scheduled runs only, so checks don't stampede.
+    if (trigger === 'schedule' && config.MAX_JITTER_MS > 0) {
+      await sleep(Math.floor(Math.random() * config.MAX_JITTER_MS));
+    }
+
+    const runId = parsed.data.runId ?? randomUUID();
+    const startedAt = new Date();
+    const result = await execute(check, app, decryptAuthConfig(app), trigger, {
+      appId: app.id,
+      runId,
+    });
+
+    // Persist the run + denormalized check fields. The check (or its app) can be
+    // deleted while the browser run is in flight — the cascade removes the checks
+    // row, so this insert hits its FK. Discard the result instead of failing the
+    // job (nothing to alert on; the entity is gone).
+    try {
+      await db.insert(runs).values({
+        id: runId,
+        checkId: check.id,
+        status: result.status,
+        trigger,
+        startedAt,
+        durationMs: result.durationMs,
+        metrics: result.metrics,
+        errorMessage: result.errorMessage,
+        screenshotPath: result.screenshotPath,
+        tracePath: result.tracePath,
+        workerId: config.workerId,
+      });
+    } catch (err) {
+      if (isForeignKeyViolation(err)) {
+        log.warn({ checkId, runId }, 'check deleted mid-run — discarding result');
+        return;
+      }
+      throw err;
+    }
+    await updateCheckAfterRun(db, store, check, startedAt, result, runId);
+
+    // Incident state machine + alerts + WS events.
+    const transitions = await evaluateIncident(db, check, {
+      id: runId,
+      status: result.status,
+      startedAt,
+    });
+
+    await publish(RUN_FINISHED_CHANNEL, {
+      type: 'run.finished',
+      appId: app.id,
+      checkId: check.id,
+      runId,
+      status: result.status,
+      durationMs: result.durationMs,
+      hasScreenshot: result.screenshotPath != null,
+    });
+
+    if (transitions.opened) {
+      const alertPayload: AlertJobPayload = { incidentId: transitions.opened.id, event: 'down' };
+      await alertsQueue.add('check.down', alertPayload, {
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 30_000 },
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+      await publish(INCIDENT_OPENED_CHANNEL, {
+        type: 'incident.opened',
+        appId: app.id,
+        checkId: check.id,
+        incidentId: transitions.opened.id,
+      });
+      log.warn({ checkId, incidentId: transitions.opened.id }, 'incident OPENED');
+    }
+    if (transitions.resolved) {
+      const alertPayload: AlertJobPayload = {
+        incidentId: transitions.resolved.incident.id,
+        event: 'recovered',
+      };
+      await alertsQueue.add('check.recovered', alertPayload, {
+        attempts: 2,
+        backoff: { type: 'fixed', delay: 30_000 },
+        removeOnComplete: true,
+        removeOnFail: true,
+      });
+      await publish(INCIDENT_RESOLVED_CHANNEL, {
+        type: 'incident.resolved',
+        appId: app.id,
+        checkId: check.id,
+        incidentId: transitions.resolved.incident.id,
+        downtimeSeconds: transitions.resolved.downtimeSeconds,
+      });
+      log.info({ checkId, incidentId: transitions.resolved.incident.id }, 'incident RESOLVED');
+    }
+
+    log.info({ checkId, runId, status: result.status, durationMs: result.durationMs, trigger }, 'run finished');
+  }
+
+  return {
+    async process(job: Job): Promise<DryRunResult | void> {
+      if (job.name === CHECK_JOB_NAMES.dryRun) return processDryRun(job);
+      return processRun(job);
+    },
+    async close(): Promise<void> {
+      await alertsQueue.close();
+    },
+  };
+}
