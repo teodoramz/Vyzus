@@ -1,13 +1,14 @@
 # Vyzus — User-Simulation & Synthetic Monitoring Platform
 
-![CI](../../actions/workflows/ci.yml/badge.svg)
-![Security](../../actions/workflows/security.yml/badge.svg)
-![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+[![CI](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml/badge.svg)](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml)
+[![Security](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml/badge.svg)](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Vyzus continuously simulates real users against your web applications using
-**Playwright**, on a configurable schedule (every X minutes per check), and gives you a
-**dashboard** showing the live availability of every enrolled application's landing page,
-with **on-demand screenshots**, response-time metrics, incident history, and alerting.
+Vyzus drives a real Chromium browser against your applications on a schedule,
+simulating what a user actually does, and tells you the moment something breaks.
+It monitors HTTP services, raw TCP/UDP ports and TLS certificates, runs recorded
+**Playwright** user journeys, and gives you a dashboard with live status,
+response-time metrics, screenshots, incident history and alerting.
 
 ## What it does
 
@@ -57,24 +58,17 @@ with **on-demand screenshots**, response-time metrics, incident history, and ale
 
 ```
 .
-├── docs/                     # Full specification — READ THESE FIRST
-│   ├── 01-requirements.md    # Functional & non-functional requirements
-│   ├── 02-architecture.md    # System design, components, data flow, security
-│   ├── 03-data-model.md      # PostgreSQL schema (Drizzle)
-│   ├── 04-api-spec.md        # REST + WebSocket API contract
-│   ├── 05-infrastructure.md  # Docker Compose, images, volumes, env, ops
-│   ├── 06-implementation-plan.md  # Phased build plan with acceptance criteria
-│   └── 07-user-guide.md      # How to use it: apps, checks, journeys, automation
-├── infra/                    # Dockerfiles, nginx config
 ├── apps/
-│   ├── api/                  # Fastify REST API + artifact server
+│   ├── api/                   # Fastify REST API + artifact server
 │   ├── worker/                # Playwright check executor (BullMQ consumer)
 │   └── dashboard/             # React SPA
 ├── packages/
-│   └── shared/                # Shared types, Zod schemas, constants
+│   └── shared/                # Zod schemas, types, constants, DB schema
+├── docs/                      # Full specification (see Documentation below)
+├── infra/                     # Dockerfiles, nginx config
 ├── scripts/
 │   └── sync-targets.mjs       # Provision apps/checks from targets/ via the API
-├── targets/                   # Optional: apps/checks as files (see targets/README.md)
+├── targets/                   # Optional: apps/checks as files (targets/README.md)
 ├── docker-compose.yml
 └── .env.example
 ```
@@ -115,13 +109,14 @@ docker compose exec api node dist/seed-demo.js
 ## Development
 
 ```bash
-pnpm install                                   # bootstrap workspace
-docker compose -f docker-compose.test.yml up -d # Postgres :5433 + Redis :6380 for tests
-pnpm typecheck && pnpm test                    # all packages; api+worker suites are
-                                               # real integration tests (DB, Redis,
-                                               # BullMQ, Playwright)
-pnpm lint && pnpm format:check                  # ESLint + Prettier
-pnpm --filter @vyzus/api db:generate        # drizzle migration from schema changes
+pnpm install                                     # bootstrap the workspace
+docker compose -f docker-compose.test.yml up -d  # Postgres :5433 + Redis :6380 for tests
+
+pnpm lint && pnpm format:check                   # ESLint + Prettier
+pnpm typecheck                                   # strict tsc across all packages
+pnpm test                                        # real integration tests
+                                                 # (DB, Redis, BullMQ, Chromium)
+pnpm --filter @vyzus/api db:generate             # Drizzle migration from schema changes
 ```
 
 Hosts without the bundled Playwright browser can point the worker (and its
@@ -142,12 +137,18 @@ See [`targets/README.md`](targets/README.md) for the file format and
 
 ## Documentation
 
-The complete specification lives in [`docs/`](docs/): numbered requirements,
-architecture (including the journey-sandbox security model), the exact data
-model, the REST/WS API contract, infrastructure/ops, the phased implementation
-plan, and a [user guide](docs/07-user-guide.md) covering day-to-day use (adding
-targets, writing uptime/journey checks, reading the dashboard, automating
-provisioning).
+| Document | Contents |
+|---|---|
+| [01 — Requirements](docs/01-requirements.md) | Numbered functional and non-functional requirements |
+| [02 — Architecture](docs/02-architecture.md) | Components, queues, data flow, and the journey-sandbox security model |
+| [03 — Data model](docs/03-data-model.md) | The exact PostgreSQL schema |
+| [04 — API specification](docs/04-api-spec.md) | REST and WebSocket contract, alert payloads |
+| [05 — Infrastructure](docs/05-infrastructure.md) | Compose, images, volumes, environment, operations |
+| [06 — Implementation plan](docs/06-implementation-plan.md) | How the build was staged; kept as a historical record |
+| [07 — User guide](docs/07-user-guide.md) | Day-to-day use: adding targets, writing checks, reading the dashboard |
+
+Start with the [user guide](docs/07-user-guide.md) if you want to run it, or
+[architecture](docs/02-architecture.md) if you want to understand it.
 
 ## CI
 
@@ -156,26 +157,12 @@ GitHub Actions run on every push/PR:
 - **CI** — ESLint + Prettier, build, strict typecheck, and the full integration
   test suite (real Postgres/Redis/BullMQ/Chromium), all three Docker images, and a
   guard that the Playwright version stays in lockstep with the worker image tag.
+  Documentation-only changes skip the expensive jobs.
 - **Security** — CodeQL static analysis, `pnpm audit` (fails on high/critical),
-  PR dependency review, gitleaks secret scan, and a Trivy scan of the api image.
-- **Release** — pushing a `v*.*.*` tag re-verifies the tagged commit, publishes
-  signed multi-tag images to GHCR with build provenance, scans them with Trivy,
-  and opens a GitHub release using that version's `CHANGELOG.md` section.
+  PR dependency review, gitleaks secret scan, and Trivy scans of all three
+  images plus the source tree.
 - **Dependabot** — weekly npm/Actions/Docker updates (Playwright pinned; it must
   be bumped together with the worker image tag).
-
-## Releases
-
-Versioned per [Semantic Versioning](https://semver.org/); see
-[CHANGELOG.md](CHANGELOG.md). Container images are published to GHCR on every
-tagged release as `api`, `worker`, and `dashboard`, tagged `1.2.3`, `1.2`, `1`,
-and `latest`.
-
-To cut a release: update `CHANGELOG.md`, then
-
-```bash
-git tag -a v1.0.0 -m "v1.0.0" && git push origin v1.0.0
-```
 
 ## License
 

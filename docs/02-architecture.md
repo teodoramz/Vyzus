@@ -94,11 +94,26 @@ and isolated). Job options: `attempts: 2`, `backoff: 30s`, `removeOnComplete/Fai
 ## 5. Check executors (worker)
 
 ### 5.1 Uptime executor
-- `context.newPage()` → `page.goto(url, { waitUntil: 'load', timeout })`.
+Two modes, selected by `config.mode`.
+
+**`http`** — browser-based:
+- `context.newPage()` → `page.goto(url, { waitUntil: 'domcontentloaded', timeout })`,
+  then a bounded settle (load → networkidle → short paint beat) before capturing.
+  `load` alone fires before a client-rendered app paints; `networkidle` as the
+  navigation condition never settles on sites with polling or websockets.
 - Collect: response status, `performance.timing`-derived TTFB / DCL / load, total ms.
-- Assertions from check config: expected status, `page.locator(sel)` visible, body contains text.
-- Screenshot per config (`always` / `on_failure` / `never`), full-page PNG →
-  `/artifacts/<appId>/<runId>/screenshot.png`.
+- Assertions from check config: expected status, `page.locator(sel)` visible, body
+  contains text, title contains text.
+- Screenshot per policy (`always` / `on_change` / `on_failure` / `never`, plus an
+  optional refresh cadence — see `packages/shared/src/screenshot-policy.ts`),
+  viewport PNG → `/artifacts/<appId>/<runId>/screenshot.png`.
+
+**`port`** — no browser: raw TCP connect or UDP probe, with an optional forced IP
+family. TCP may additionally run a TLS handshake and validate the peer certificate.
+
+Every browser context is created through `newStealthContext()`, which applies a
+Desktop Chrome fingerprint and hides `navigator.webdriver`, so monitored sites
+serve the real page rather than a bot challenge.
 
 ### 5.2 Journey executor (user-supplied code)
 The stored spec is the *body* of a journey function. The harness wraps it:
@@ -115,7 +130,9 @@ await expect(page.getByText('Welcome')).toBeVisible();
 Execution: the worker **spawns a separate Node child process** (`sandbox/spawn.ts`) that:
 1. Writes the spec into a temp runner file that imports `{ chromium, expect }`,
    opens a context with tracing on, and evals the body with `page`/`expect`/`context` in scope.
-2. Enforces: hard kill at `timeout_ms`, max 10 MB stdout, no access to platform env vars
+2. Enforces: soft timeout at `timeout_ms` (lets the harness save a screenshot and
+   trace first), SIGKILL backstop 10s later for specs that block the event loop,
+   max 10 MB stdout, no access to platform env vars
    (clean `env`), runs as the container's non-root `pwuser`.
 3. Reports result as a single JSON line on stdout; on failure saves failure screenshot +
    `trace.zip` to the artifacts dir.

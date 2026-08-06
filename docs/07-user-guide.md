@@ -16,17 +16,38 @@ API equivalent: `POST /apps` (see §5 for scripting this).
 
 ## 2. Uptime checks
 
-An uptime check loads the landing page in a real browser and asserts on it. Fields:
+An uptime check has two modes: **HTTP(S) service**, which loads the page in a real
+browser and asserts on it, and **TCP/UDP port**, which is a raw reachability probe.
+Both drive the application's Up/Down status.
+
+### HTTP(S) mode
 
 | Field | Meaning |
 |---|---|
 | Expected HTTP status | defaults to 200 |
 | CSS selector present (optional) | fails if `page.locator(selector)` isn't visible |
 | Text present on page (optional) | fails if `document.body.innerText` doesn't contain it |
-| Screenshot | `always`, `on_failure` (default), or `never` |
+| Page title contains (optional) | fails if `document.title` stops containing it |
+| Screenshot | `Every run`, `On failure and recovery` (default), `On failure only`, or `Never` |
+| Also refresh while healthy | minutes; on a passing run, refresh the stored screenshot once it is older than this. Empty = only capture on failure/recovery |
 
 It also records timing metrics (TTFB, DOM-content-loaded, full load) shown on the
 app's response-time chart.
+
+### TCP/UDP port mode
+
+| Field | Meaning |
+|---|---|
+| Host | domain name or IPv4/IPv6 literal — no scheme, no path |
+| Common service | optional preset that fills in port / protocol / TLS |
+| Port, Protocol | 1-65535, `tcp` or `udp` |
+| IP version | `auto`, or force IPv4 / IPv6 |
+| TLS | TCP only: perform a TLS handshake and validate the certificate |
+| Allow an insecure certificate | accept self-signed / untrusted / expired certs; details are still recorded |
+
+TCP is unambiguous: connect succeeds, is refused, or times out. UDP has no
+handshake, so silence within the timeout is reported as reachable rather than
+failing a service that simply never answers an empty probe.
 
 ## 3. Journey checks (user-simulation tests)
 

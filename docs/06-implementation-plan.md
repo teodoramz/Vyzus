@@ -1,6 +1,11 @@
 # 06 — Implementation plan
 
-Build in this order — each phase ends in a runnable, verifiable state.
+> **Status: all seven phases are built and shipped in 1.0.0.** This document is
+> kept as the record of how the system was staged and what each phase had to
+> prove before the next began. For what the product does today, see
+> `01-requirements.md` and the [CHANGELOG](../CHANGELOG.md).
+
+Built in this order — each phase ended in a runnable, verifiable state.
 Conventions: strict TypeScript everywhere (`tsconfig.base.json`), Zod schemas in
 `packages/shared` are the single source of truth for every payload, pino for logs,
 vitest for tests. Workspace stubs (`package.json` per app) already list the intended
@@ -81,7 +86,7 @@ dependencies — run `pnpm install` at the root first to generate `pnpm-lock.yam
 `pnpm typecheck && pnpm test` green at root; no `any` without a comment; every route
 validated by a shared Zod schema; worker never crashes on a malformed job (log + fail run).
 
-## Backlog (v2 — do not build now)
+## Backlog (v2 candidates, not in 1.0.0)
 SSL-certificate expiry checks · maintenance windows · public status page ·
 email/Telegram channels · multi-region probes · hourly rollup table · S3/MinIO
 artifacts · Kubernetes/Helm · CI pipeline · per-check custom alert thresholds on
