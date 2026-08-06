@@ -17,9 +17,10 @@ import { formatMs, formatPercent, formatRelativeTime } from '../lib/format';
 
 const STATUS_STYLE: Record<AppStatus, { dot: string; text: string }> = {
   UP: { dot: 'bg-green-600 dark:bg-emerald-400', text: 'text-green-600 dark:text-emerald-400' },
+  DEGRADED: { dot: 'bg-amber-500 dark:bg-amber-400', text: 'text-amber-600 dark:text-amber-400' },
   DOWN: { dot: 'bg-red-600 dark:bg-rose-500', text: 'text-red-600 dark:text-rose-500' },
   PAUSED: { dot: 'bg-slate-400 dark:bg-zinc-600', text: 'text-slate-500 dark:text-zinc-500' },
-  UNKNOWN: { dot: 'bg-amber-500 dark:bg-amber-400', text: 'text-amber-600 dark:text-amber-400' },
+  UNKNOWN: { dot: 'bg-slate-300 dark:bg-zinc-700', text: 'text-slate-400 dark:text-zinc-500' },
 };
 
 const JOURNEY_STYLE: Record<RunStatus, { text: string; label: string }> = {
@@ -59,7 +60,8 @@ export function AppCard({ app, prominent = false }: { app: AppSummary; prominent
   const qc = useQueryClient();
   const [busy, setBusy] = useState<'run' | 'screenshot' | null>(null);
   const style = STATUS_STYLE[app.status];
-  const sparkStatus = app.status === 'UP' ? 'good' : app.status === 'DOWN' ? 'critical' : 'neutral';
+  const sparkStatus =
+    app.status === 'UP' ? 'good' : app.status === 'DOWN' || app.status === 'DEGRADED' ? 'critical' : 'neutral';
 
   const runNow = useMutation({
     mutationFn: async () => {

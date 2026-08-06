@@ -13,6 +13,13 @@ const STATUS_META: Record<AppStatus, { label: string; dot: string; text: string;
     bg: 'bg-green-600/10 dark:bg-emerald-400/10',
     icon: '●', // filled circle
   },
+  DEGRADED: {
+    label: 'Degraded',
+    dot: 'bg-amber-500 dark:bg-amber-400',
+    text: 'text-amber-600 dark:text-amber-400',
+    bg: 'bg-amber-500/10 dark:bg-amber-400/10',
+    icon: '▲', // triangle
+  },
   DOWN: {
     label: 'Down',
     dot: 'bg-red-600 dark:bg-rose-500',
@@ -29,10 +36,10 @@ const STATUS_META: Record<AppStatus, { label: string; dot: string; text: string;
   },
   UNKNOWN: {
     label: 'Unknown',
-    dot: 'bg-amber-500 dark:bg-amber-400',
-    text: 'text-amber-600 dark:text-amber-400',
-    bg: 'bg-amber-500/10 dark:bg-amber-400/10',
-    icon: '●',
+    dot: 'bg-slate-300 dark:bg-zinc-700',
+    text: 'text-slate-400 dark:text-zinc-500',
+    bg: 'bg-slate-400/10 dark:bg-zinc-600/10',
+    icon: '?',
   },
 };
 

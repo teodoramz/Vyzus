@@ -133,5 +133,10 @@ Single-row key/value `(key text PK, value jsonb)` for runtime-tunable retention:
 on-demand availability queries ever get slow (see 02-architecture §6).
 
 ## Derived values (never stored)
-- **App status** = worst `last_status` among its enabled checks (`UNKNOWN` if never run, `PAUSED` if app/all checks disabled).
+- **App status** — `UP` when everything that has run is passing; `DOWN` only when
+  *every* liveness (`uptime`) check is failing; `DEGRADED` when some are failing and
+  some are not, including when only a `journey` fails (a broken flow is not a dead
+  site, so a journey can never produce `DOWN`); `PAUSED` when the app or all its
+  checks are disabled; `UNKNOWN` before anything has run. See
+  `apps/api/src/lib/queries.ts` `deriveAppStatus()`.
 - **Availability %** = `count(status='passed') / count(*)` over the window from `runs`.

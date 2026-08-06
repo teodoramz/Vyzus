@@ -11,8 +11,8 @@ import { NewAppModal } from '../components/NewAppModal';
 import { StatusBadge } from '../components/StatusBadge';
 import { useAuth } from '../auth/AuthContext';
 
-const STATUS_OPTIONS: AppStatus[] = ['UP', 'DOWN', 'PAUSED', 'UNKNOWN'];
-const TRIAGE_ORDER: Record<AppStatus, number> = { DOWN: 0, UNKNOWN: 1, UP: 2, PAUSED: 3 };
+const STATUS_OPTIONS: AppStatus[] = ['UP', 'DEGRADED', 'DOWN', 'PAUSED', 'UNKNOWN'];
+const TRIAGE_ORDER: Record<AppStatus, number> = { DOWN: 0, DEGRADED: 1, UNKNOWN: 2, UP: 3, PAUSED: 4 };
 
 export function Overview(): JSX.Element {
   const { user } = useAuth();

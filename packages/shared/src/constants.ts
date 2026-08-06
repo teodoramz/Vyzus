@@ -59,7 +59,7 @@ export const DELIVERY_STATUSES = ['sent', 'failed'] as const;
 export type DeliveryStatus = (typeof DELIVERY_STATUSES)[number];
 
 /** Derived, never-stored application status shown on the overview grid. */
-export const APP_STATUSES = ['UP', 'DOWN', 'PAUSED', 'UNKNOWN'] as const;
+export const APP_STATUSES = ['UP', 'DEGRADED', 'DOWN', 'PAUSED', 'UNKNOWN'] as const;
 export type AppStatus = (typeof APP_STATUSES)[number];
 
 // Limits / defaults referenced by both validation and business logic.

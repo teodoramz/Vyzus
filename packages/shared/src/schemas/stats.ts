@@ -4,6 +4,7 @@ export const statsSchema = z.object({
   apps: z.object({
     total: z.number().int(),
     up: z.number().int(),
+    degraded: z.number().int(),
     down: z.number().int(),
     paused: z.number().int(),
   }),

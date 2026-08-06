@@ -29,20 +29,50 @@ function check(overrides: Partial<CheckRow>): CheckRow {
 }
 
 describe('deriveAppStatus', () => {
-  it('is UNKNOWN when there is no uptime check at all', () => {
+  it('is UNKNOWN when the app has no checks at all', () => {
     expect(deriveAppStatus(true, [])).toBe('UNKNOWN');
-    expect(deriveAppStatus(true, [check({ type: 'journey', lastStatus: 'failed' })])).toBe('UNKNOWN');
   });
 
-  it('ignores a failing journey check entirely — only uptime checks drive the badge', () => {
+  it('is UP when everything that has run is passing', () => {
     const checks = [
       check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
-      check({ id: 'j1', type: 'journey', lastStatus: 'failed' }),
+      check({ id: 'j1', type: 'journey', lastStatus: 'passed' }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('UP');
   });
 
-  it('goes DOWN on a failing uptime check regardless of a passing journey check', () => {
+  it('is DOWN only when every liveness check is failing', () => {
+    const checks = [
+      check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
+      check({ id: 'u2', type: 'uptime', lastStatus: 'timeout' }),
+    ];
+    expect(deriveAppStatus(true, checks)).toBe('DOWN');
+  });
+
+  it('is DEGRADED — not DOWN — when only some liveness checks are failing', () => {
+    const checks = [
+      check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
+      check({ id: 'u2', type: 'uptime', lastStatus: 'failed' }),
+    ];
+    expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
+  });
+
+  it('a failing journey degrades the app but never marks it down', () => {
+    const checks = [
+      check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
+      check({ id: 'j1', type: 'journey', lastStatus: 'failed' }),
+    ];
+    expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
+
+    // Journey-only app: still never DOWN, however broken the flow is.
+    expect(deriveAppStatus(true, [check({ type: 'journey', lastStatus: 'failed' })])).toBe('DEGRADED');
+  });
+
+  it('a single failing liveness check is DOWN when it is the only one', () => {
+    expect(deriveAppStatus(true, [check({ type: 'uptime', lastStatus: 'failed' })])).toBe('DOWN');
+  });
+
+  it('a down app stays DOWN even while a journey happens to pass', () => {
     const checks = [
       check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
       check({ id: 'j1', type: 'journey', lastStatus: 'passed' }),
@@ -50,12 +80,21 @@ describe('deriveAppStatus', () => {
     expect(deriveAppStatus(true, checks)).toBe('DOWN');
   });
 
-  it('is PAUSED when the app is disabled or every uptime check is disabled', () => {
+  it('ignores checks that have never run when judging DOWN', () => {
+    // u2 has no result yet, so "all liveness failing" is judged on u1 alone.
+    const checks = [
+      check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
+      check({ id: 'u2', type: 'uptime', lastStatus: null }),
+    ];
+    expect(deriveAppStatus(true, checks)).toBe('DOWN');
+  });
+
+  it('is PAUSED when the app is disabled or every check is disabled', () => {
     expect(deriveAppStatus(false, [check({ lastStatus: 'passed' })])).toBe('PAUSED');
     expect(deriveAppStatus(true, [check({ enabled: false, lastStatus: 'passed' })])).toBe('PAUSED');
   });
 
-  it('is UNKNOWN when the (only) enabled uptime check has never run', () => {
+  it('is UNKNOWN when the only enabled check has never run', () => {
     expect(deriveAppStatus(true, [check({ lastStatus: null })])).toBe('UNKNOWN');
   });
 });

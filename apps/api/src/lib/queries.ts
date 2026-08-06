@@ -28,29 +28,41 @@ export async function availabilityForChecks(db: Database, checkIds: string[], si
 }
 
 /**
- * Derived app status (03-data-model "Derived values") — based on `uptime`
- * checks only. A journey (user-simulation) check failing means some flow
- * broke, not that the site is down; mixing the two into one badge made a
- * broken login form look identical to a dead landing page. An uptime check
- * in `port` mode failing (e.g. 443 stopped accepting connections) is exactly
- * the same kind of "the thing itself is down" signal as one in `http` mode,
- * so no mode-based distinction is needed here — both are still `type ===
- * 'uptime'` rows. Availability numbers/charts on the app-detail page are
- * still per-check as before — this only narrows what drives the grid's
- * Up/Down badge.
- * - UNKNOWN — no uptime check exists at all (nothing to judge availability by)
- * - PAUSED  — app disabled, or every uptime check disabled
- * - UNKNOWN — an enabled uptime check exists but has never run
- * - DOWN    — any enabled uptime check's last_status is not `passed`
- * - UP      — otherwise
+ * Derived app status (03-data-model "Derived values").
+ *
+ * `DOWN` means the application is unreachable, so it requires *every* liveness
+ * check to be failing. One failing check out of several is `DEGRADED` — the
+ * app has a problem, but calling that "down" would make a single broken check
+ * indistinguishable from a total outage.
+ *
+ * Liveness = `uptime` checks (both `http` and `port` modes). A failing
+ * `journey` can degrade an app but never marks it down: a broken login flow is
+ * not a dead site. A journey alone therefore cannot produce `DOWN`, only
+ * `DEGRADED`.
+ *
+ * - PAUSED   — app disabled, or every check disabled
+ * - UNKNOWN  — no check has produced a result yet
+ * - UP       — everything that has run is passing
+ * - DOWN     — at least one liveness check exists and all of them are failing
+ * - DEGRADED — anything else: some failing, some passing
  */
 export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppStatus {
-  const uptimeChecks = checks.filter((c) => c.type === 'uptime');
-  if (uptimeChecks.length === 0) return 'UNKNOWN';
-  const enabled = uptimeChecks.filter((c) => c.enabled);
+  const relevant = checks.filter((c) => c.type === 'uptime' || c.type === 'journey');
+  if (relevant.length === 0) return 'UNKNOWN';
+
+  const enabled = relevant.filter((c) => c.enabled);
   if (!appEnabled || enabled.length === 0) return 'PAUSED';
+
   const withStatus = enabled.filter((c) => c.lastStatus != null);
   if (withStatus.length === 0) return 'UNKNOWN';
-  const anyDown = withStatus.some((c) => c.lastStatus !== 'passed');
-  return anyDown ? 'DOWN' : 'UP';
+
+  const failing = withStatus.filter((c) => c.lastStatus !== 'passed');
+  if (failing.length === 0) return 'UP';
+
+  // Only liveness checks can express "unreachable". If every one of them has
+  // run and every one is failing, the app is genuinely down.
+  const liveness = withStatus.filter((c) => c.type === 'uptime');
+  if (liveness.length > 0 && liveness.every((c) => c.lastStatus !== 'passed')) return 'DOWN';
+
+  return 'DEGRADED';
 }

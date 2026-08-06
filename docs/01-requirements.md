@@ -36,7 +36,9 @@
     fails the check exactly like a closed port. `allowInsecureCert: true` relaxes this to "handshake
     completed" only (for a deliberately self-signed internal service); certificate metrics (issuer,
     subject, expiry, trust) are still recorded either way.
-  - Both `uptime` modes drive the application's Up/Down badge — a failing `journey` check never does.
+  - Both `uptime` modes drive the application's status badge. `DOWN` requires *every*
+    liveness check to be failing; a single failing check among several is `DEGRADED`.
+    A failing `journey` can degrade an application but never marks it `DOWN`.
 - FR-2.3 **Journey check**:
   - The test body is a Playwright TypeScript snippet uploaded or pasted/edited in the dashboard (Monaco editor). Users record it locally with `npx playwright codegen <url>`.
   - The platform wraps the snippet in its own runner harness (see 02-architecture §5.2); the snippet exports steps using the standard `page` API.
@@ -52,7 +54,7 @@
 - FR-3.4 Missed schedules (worker down) are not back-filled; the next tick just runs.
 
 ### FR-4 Dashboard
-- FR-4.1 **Overview grid**: one card per application — current status (UP / DOWN / PAUSED / UNKNOWN), availability % for 24 h, last response time, sparkline, latest screenshot thumbnail. Auto-refreshes via WebSocket.
+- FR-4.1 **Overview grid**: one card per application — current status (UP / DEGRADED / DOWN / PAUSED / UNKNOWN), availability % for 24 h, last response time, sparkline, latest screenshot thumbnail. Auto-refreshes via WebSocket.
 - FR-4.2 **Application detail page**: per-check status, availability 24 h / 7 d / 30 d, response-time chart, run history table (filterable by status), screenshot gallery, incident timeline.
 - FR-4.3 **Run detail**: metrics, error message, screenshot, downloadable Playwright trace.
 - FR-4.4 **On-demand screenshot**: button on app card and detail page → enqueues an immediate screenshot job → result appears live.

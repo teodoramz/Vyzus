@@ -53,6 +53,23 @@ async function makeApp(name: string, lastStatus: 'passed' | 'failed' | null, ena
 }
 
 describe('GET /stats', () => {
+  it('counts an app with one failing and one passing check as degraded, not down', async () => {
+    const app = await makeApp('mixed', 'passed');
+    await ctx.dbHandle.db.insert(checks).values({
+      appId: app.id,
+      type: 'uptime',
+      name: 'second',
+      intervalMinutes: 5,
+      lastStatus: 'failed',
+      lastRunAt: new Date(),
+      config: { mode: 'http', expectedStatus: 200, screenshot: 'on_failure' },
+    });
+
+    const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/stats', headers: authHeader(token) });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().apps).toMatchObject({ total: 1, up: 0, degraded: 1, down: 0 });
+  });
+
   it('returns app status counts, open incidents, queue depth, and runs in 24h', async () => {
     const up = await makeApp('up', 'passed');
     await makeApp('down', 'failed');
@@ -71,7 +88,7 @@ describe('GET /stats', () => {
     const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/stats', headers: authHeader(token) });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
-      apps: { total: 4, up: 1, down: 1, paused: 1 },
+      apps: { total: 4, up: 1, degraded: 0, down: 1, paused: 1 },
       openIncidents: 1,
       queueDepth: 3,
       runsLast24h: 2,
@@ -112,7 +129,7 @@ describe('GET /stats', () => {
     const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/stats', headers: authHeader(viewerToken) });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
-      apps: { total: 1, up: 1, down: 0, paused: 0 },
+      apps: { total: 1, up: 1, degraded: 0, down: 0, paused: 0 },
       openIncidents: 1,
       runsLast24h: 1,
     });

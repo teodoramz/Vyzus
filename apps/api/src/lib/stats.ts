@@ -12,6 +12,7 @@ import { deriveAppStatus, WINDOW_MS } from './queries.js';
 export interface AppCounts {
   total: number;
   up: number;
+  degraded: number;
   down: number;
   paused: number;
   unknown: number;
@@ -33,10 +34,11 @@ export async function computeAppCounts(db: Database, allowedAppIds: string[] | n
     list.push(c);
     byApp.set(c.appId, list);
   }
-  const counts: AppCounts = { total: appRows.length, up: 0, down: 0, paused: 0, unknown: 0 };
+  const counts: AppCounts = { total: appRows.length, up: 0, degraded: 0, down: 0, paused: 0, unknown: 0 };
   for (const app of appRows) {
     const status = deriveAppStatus(app.enabled, byApp.get(app.id) ?? []);
     if (status === 'UP') counts.up += 1;
+    else if (status === 'DEGRADED') counts.degraded += 1;
     else if (status === 'DOWN') counts.down += 1;
     else if (status === 'PAUSED') counts.paused += 1;
     else counts.unknown += 1;
@@ -73,7 +75,7 @@ export async function countRunsSince(
 }
 
 export interface FullStats {
-  apps: { total: number; up: number; down: number; paused: number };
+  apps: { total: number; up: number; degraded: number; down: number; paused: number };
   openIncidents: number;
   queueDepth: number;
   runsLast24h: number;
@@ -90,7 +92,13 @@ export async function computeStats(
     countRunsSince(db, new Date(Date.now() - WINDOW_MS.h24), allowedAppIds),
   ]);
   return {
-    apps: { total: counts.total, up: counts.up, down: counts.down, paused: counts.paused },
+    apps: {
+      total: counts.total,
+      up: counts.up,
+      degraded: counts.degraded,
+      down: counts.down,
+      paused: counts.paused,
+    },
     openIncidents,
     queueDepth,
     runsLast24h,
