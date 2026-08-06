@@ -1,10 +1,6 @@
-// Single source of truth for "should this run store a screenshot?".
-//
-// Lives in shared rather than in the worker because the decision depends on
-// check *state* (previous status, when the last screenshot was taken) that
-// only the job processor has, while the meaning of each mode is part of the
-// check contract the API and dashboard also describe. Keeping it here means
-// the rule is written once and can be unit-tested without a browser.
+// Decides whether a run stores a screenshot. Kept in shared because the modes
+// are part of the check contract, and so the rule is unit-testable without a
+// browser.
 import type { RunStatus, ScreenshotMode } from './constants.js';
 
 export interface ScreenshotDecisionInput {

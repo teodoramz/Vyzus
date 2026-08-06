@@ -1,14 +1,7 @@
 // FR-4.1 Overview grid: one card per application, tag/status filters, live via
-// WS (RealtimeProvider invalidates ['apps'] on run.finished / incident.* /
-// the 30s poll fallback tick).
-//
-// DOWN apps still sort first — the whole point of the grid is instant
-// incident triage, so the thing that needs attention is the first thing you
-// see, not buried alphabetically. Card *size* no longer follows status
-// though: every card is the same size once there are 3+ apps, so the grid
-// reads as a consistent wall rather than a patchwork. With only 1-2 apps
-// total there's nothing to be consistent WITH, so those get to stretch and
-// actually use the screen instead of sitting in a lonely 320px column.
+// WS (RealtimeProvider invalidates ['apps']), with a 30s poll fallback.
+// DOWN sorts first for triage; a 1-2 app grid widens its columns rather than
+// leaving cards stranded in a narrow one.
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import type { AppStatus, AppSummary } from '@vyzus/shared';
@@ -123,11 +116,9 @@ export function Overview(): JSX.Element {
         </p>
       )}
 
-      {/* auto-rows-fr: CSS Grid sizes each row to its own tallest item, so
-          without it a row of cards that all have tags ends up taller than a
-          row where none do (or where a check has too few runs to draw a
-          sparkline). Equal rows make every card the same size across the whole
-          grid, not just within a row. */}
+      {/* auto-rows-fr: Grid sizes each row to its own tallest item, so without
+          it card height varies between rows (tags present or absent, sparkline
+          drawn or not). Equal rows keep every card the same size. */}
       {apps && apps.length > 0 && (
         <div
           className={`grid auto-rows-fr grid-cols-1 gap-4 ${

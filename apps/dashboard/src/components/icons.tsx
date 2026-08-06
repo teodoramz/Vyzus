@@ -1,8 +1,6 @@
-// Inline SVG icon set. Deliberately not emoji: emoji render differently on
-// every OS/browser (colour, weight, baseline), can't inherit the surrounding
-// text colour, and look out of place in a dense operations UI. These take
-// their colour from `currentColor` so they match whatever they sit next to in
-// both light and dark mode.
+// Inline SVG icons, drawn with `currentColor` so they inherit surrounding text
+// colour in both themes. Emoji were avoided: they render inconsistently across
+// platforms and cannot take a colour.
 interface IconProps {
   size?: number;
   className?: string;

@@ -126,10 +126,8 @@ export function RunDetail(): JSX.Element {
         )}
         {run.hasScreenshot && objectUrl && (
           <>
-            {/* w-full so this panel lines up with the metrics/error cards above
-                it — without it the button shrinks to the image's intrinsic
-                width (a 1280x720 capture capped at 420px tall is ~746px, just
-                shy of the page's max-w-3xl) and reads as visibly narrower. */}
+            {/* w-full, or the button shrinks to the image's intrinsic width and
+                sits narrower than the cards above it. */}
             <button
               type="button"
               onClick={() => setLightboxOpen(true)}

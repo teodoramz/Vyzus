@@ -1,7 +1,6 @@
-// First-boot screen: creates the initial admin account when the instance has
-// no users at all. Reached only via the redirect in Login (which polls
-// GET /auth/setup-status); once any user exists the API returns 409 here
-// permanently and every further account is created from the admin Users page.
+// First-boot screen: creates the initial admin when the instance has no users.
+// Reached via the redirect in Login; every later account comes from the admin
+// Users page.
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';

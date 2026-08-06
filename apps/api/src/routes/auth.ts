@@ -46,12 +46,11 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     needsSetup: (await userCount()) === 0,
   }));
 
-  // POST /auth/setup — creates the first admin on a fresh install and logs
-  // them straight in. Necessarily unauthenticated, so it is gated on the
-  // users table being empty; once any user exists this is permanently 409 and
-  // further accounts go through the admin-only POST /users. The count check
-  // and the insert run in one transaction with the table locked, so two
-  // simultaneous setup submissions can't both create an admin.
+  // POST /auth/setup — creates the first admin on a fresh install. Necessarily
+  // unauthenticated, so it is gated on an empty users table and is 409
+  // afterwards; further accounts go through the admin-only POST /users. The
+  // count and insert share a transaction holding a table lock so two
+  // simultaneous submissions cannot both succeed.
   app.post(
     '/setup',
     { schema: { body: setupBodySchema, response: { 201: loginResponseSchema } } },

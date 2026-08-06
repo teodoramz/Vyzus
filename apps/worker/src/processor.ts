@@ -166,11 +166,9 @@ export function createProcessor(deps: ProcessorDeps): {
         return executePort({ config: uptimeConfig, timeoutMs: check.timeoutMs });
       }
 
-      // The policy depends on this run's own outcome (a failure is always
-      // worth a picture), so it is evaluated by the executor once the status
-      // is known and the page is still open — one navigation, no wasted
-      // capture. Pressing the Screenshot button skips the policy entirely:
-      // that means "show me now", whatever the mode says.
+      // Evaluated by the executor once the outcome is known, so the policy can
+      // depend on it without a second navigation. The Screenshot button always
+      // captures, whatever the mode.
       return executeUptime(
         {
           landingUrl: app.landingUrl,
@@ -213,9 +211,7 @@ export function createProcessor(deps: ProcessorDeps): {
           type: payload.type,
           config: payload.config as CheckRow['config'],
           timeoutMs: payload.timeoutMs,
-          // A dry run has no persisted check behind it, so there is no
-          // history for the screenshot policy to consider — and it passes a
-          // null artifact target anyway, so nothing is stored either way.
+          // A dry run has no persisted check, and stores nothing.
           lastStatus: null,
           lastScreenshotAt: null,
         },

@@ -1,8 +1,6 @@
-// Guard around the first-boot Setup screen. Keeps the "is setup still
-// needed?" check in one place so /setup can't be reached (or bookmarked)
-// on an instance that already has users — the API enforces this too
-// (POST /auth/setup is 409 once any user exists); this just avoids showing
-// a form that could only ever fail.
+// Guard for the first-boot Setup screen, so /setup cannot be reached on an
+// instance that already has users. The API enforces this too (409); this only
+// avoids rendering a form that could never succeed.
 import { Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { authApi } from '../api/endpoints';

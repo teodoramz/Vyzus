@@ -68,17 +68,12 @@ function checkTcp(config: PortModeConfig, timeoutMs: number, startedAt: number):
 }
 
 /**
- * TLS check: wraps the TCP handshake in a TLS negotiation and inspects the
- * peer certificate. With `allowInsecureCert: false` (default), Node's own
- * chain verification (`rejectUnauthorized: true`) already enforces trust +
- * expiry + hostname — an invalid cert aborts the handshake and surfaces as
- * a socket `error` (e.g. "self signed certificate", "certificate has
- * expired", "Hostname/IP does not match certificate's altnames"), which
- * this reports as `failed`, the same severity as a closed port. With
- * `allowInsecureCert: true` (`rejectUnauthorized: false`), the handshake
- * always completes if the port answers at all; `socket.authorized` /
- * `authorizationError` still say whether the cert *would* have failed
- * strict validation, surfaced in metrics for visibility without failing
+ * TLS handshake plus certificate inspection.
+ *
+ * With `allowInsecureCert: false`, Node's own chain verification enforces
+ * trust, expiry and hostname; a bad cert aborts the handshake and is reported
+ * as `failed`. With it true the handshake always completes, and
+ * `authorized`/`authorizationError` are recorded in metrics without failing
  * the check.
  */
 function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number): Promise<ExecutionResult> {

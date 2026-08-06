@@ -35,9 +35,8 @@ export function MiniAreaChart({
   status: 'good' | 'critical' | 'neutral';
   height?: number;
 }): JSX.Element | null {
-  // A check with 0 or 1 runs has no trend to draw yet. Hold the space rather
-  // than returning null, so a brand-new card keeps the same internal layout
-  // as one with history instead of visibly reflowing on its second run.
+  // Hold the space rather than returning null, so a new card does not reflow
+  // once its second run lands.
   if (values.length < 2) {
     return (
       <div style={{ height }} className="flex w-full items-center text-[11px] text-slate-300 dark:text-zinc-700">
