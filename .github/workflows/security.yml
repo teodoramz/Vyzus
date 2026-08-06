@@ -72,26 +72,60 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   image-scan:
-    name: Image vulnerability scan (Trivy)
+    name: Image scan (${{ matrix.image }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       security-events: write
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # All three, not just the api: the worker ships Chromium and the full
+        # Playwright base image, which is by far the largest CVE surface here,
+        # and the dashboard ships an nginx runtime of its own.
+        image: [api, worker, dashboard]
     steps:
       - uses: actions/checkout@v4
-      - name: Build api image
-        run: docker build -f infra/api.Dockerfile -t vyzus-api:scan .
-      - name: Trivy scan (api image — OS + node deps)
+      - name: Build ${{ matrix.image }} image
+        run: docker build -f infra/${{ matrix.image }}.Dockerfile -t vyzus-${{ matrix.image }}:scan .
+      - name: Trivy scan (OS packages + bundled node deps)
         uses: aquasecurity/trivy-action@0.28.0
         with:
-          image-ref: vyzus-api:scan
+          image-ref: vyzus-${{ matrix.image }}:scan
           format: sarif
-          output: trivy-api.sarif
+          output: trivy-${{ matrix.image }}.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
-          sarif_file: trivy-api.sarif
-          category: trivy-api
+          sarif_file: trivy-${{ matrix.image }}.sarif
+          category: trivy-${{ matrix.image }}
+
+  # Catches vulnerable dependencies and risky IaC/Dockerfile settings in the
+  # source tree itself, which an image scan cannot see (it only sees the built
+  # result, not e.g. a Dockerfile that would run as root).
+  repo-scan:
+    name: Repository scan (Trivy fs + config)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy filesystem + misconfiguration scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln,misconfig,secret
+          format: sarif
+          output: trivy-repo.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-repo.sarif
+          category: trivy-repo

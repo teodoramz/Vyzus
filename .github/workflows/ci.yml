@@ -9,9 +9,55 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
+  # Which parts of the tree changed. Expensive jobs below gate on this instead
+  # of the workflow using `paths-ignore`: a path-filtered workflow is reported
+  # as "expected but never run", which blocks a PR when CI is a required check.
+  # This way the workflow always reports, and only the costly jobs are skipped.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+      docker: ${{ steps.filter.outputs.docker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: filter
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="origin/${{ github.base_ref }}"
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            files=$(git diff --name-only "$base"...HEAD)
+          else
+            # First commit on a branch has no parent to diff against.
+            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+          fi
+          echo "changed files:"; echo "$files"
+
+          # Anything that is not purely documentation.
+          if echo "$files" | grep -qvE '^(docs/|targets/|.*\.md$|LICENSE$)'; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # Image builds only matter when the build inputs move.
+          if echo "$files" | grep -qE '^(infra/|apps/|packages/|pnpm-lock\.yaml|pnpm-workspace\.yaml|package\.json)'; then
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docker=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint:
     name: Lint and format
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,8 +67,7 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
       - name: ESLint
         run: pnpm lint
       - name: Prettier
@@ -30,6 +75,8 @@ jobs:
 
   build-test:
     name: Build, typecheck, test
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -65,14 +112,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Keyed on the resolved version in the lockfile, not the declared range,
+      # so a transitive bump invalidates the cache instead of silently reusing
+      # a browser build that no longer matches the client.
+      - name: Resolve Playwright version
+        id: pw
+        run: echo "version=$(pnpm --filter @vyzus/worker exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
       - name: Cache Playwright browser
+        id: pw-cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('apps/worker/package.json') }}
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
 
+      # On a cache hit only the OS packages are missing, and installing those
+      # is far cheaper than re-downloading the browser.
       - name: Install Playwright Chromium
-        run: pnpm --filter @vyzus/worker exec playwright install --with-deps chromium
+        run: |
+          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
+            pnpm --filter @vyzus/worker exec playwright install-deps chromium
+          else
+            pnpm --filter @vyzus/worker exec playwright install --with-deps chromium
+          fi
 
       - name: Build
         run: pnpm build
@@ -84,10 +146,13 @@ jobs:
         run: pnpm test
 
   docker-images:
-    name: Docker image builds
+    name: Docker image build (${{ matrix.image }})
+    needs: changes
+    if: needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
+      fail-fast: false # one broken image should not hide the state of the others
       matrix:
         image: [api, worker, dashboard]
     steps:
@@ -111,7 +176,31 @@ jobs:
       - name: worker package.json playwright == worker.Dockerfile image tag
         run: |
           pkg_version=$(node -p "require('./apps/worker/package.json').dependencies.playwright")
-          img_version=$(grep -oPm1 'playwright:v\K[0-9.]+' infra/worker.Dockerfile)
-          echo "package.json: $pkg_version — Dockerfile: v$img_version"
-          test "$pkg_version" = "$img_version" || {
-            echo "::error::playwright version must match the tag in infra/worker.Dockerfile"; exit 1; }
+          # Both stages of the Dockerfile must agree, not just the first.
+          mapfile -t img_versions < <(grep -oP 'playwright:v\K[0-9.]+' infra/worker.Dockerfile)
+          echo "package.json: $pkg_version — Dockerfile tags: ${img_versions[*]}"
+          for v in "${img_versions[@]}"; do
+            test "$pkg_version" = "$v" || {
+              echo "::error file=infra/worker.Dockerfile::playwright $pkg_version does not match image tag v$v — bump both together"
+              exit 1; }
+          done
+
+  # Single gate for branch protection: one required check that stays green when
+  # the heavy jobs are legitimately skipped, but fails if any of them failed.
+  ci-ok:
+    name: CI
+    if: always()
+    needs: [lint, build-test, docker-images, playwright-lockstep]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail if any required job failed
+        run: |
+          results="${{ join(needs.*.result, ' ') }}"
+          echo "job results: $results"
+          for r in $results; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a CI job reported '$r'"; exit 1 ;;
+            esac
+          done

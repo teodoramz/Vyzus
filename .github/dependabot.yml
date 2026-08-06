@@ -5,9 +5,17 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    # Every PR here runs the full integration suite (Postgres, Redis, Chromium),
+    # so keep the number of PRs low and let grouping do the batching.
+    open-pull-requests-limit: 5
     groups:
+      # One PR for all routine bumps across the whole workspace.
       minor-and-patch:
         update-types: [minor, patch]
+      # Majors still get reviewed, but batched by area rather than one PR each.
+      dev-tooling-major:
+        patterns: ['eslint*', '@eslint/*', 'typescript-eslint', 'prettier*', 'vitest', 'tsup', 'tsx', '@types/*']
+        update-types: [major]
     ignore:
       # playwright must stay in lockstep with the worker.Dockerfile image tag
       # (enforced by the playwright-lockstep CI job) — bump both together.
@@ -18,6 +26,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ['*']
 
   - package-ecosystem: docker
     directories:
@@ -25,6 +37,10 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    open-pull-requests-limit: 3
+    groups:
+      base-images:
+        patterns: ['*']
     ignore:
       # See playwright note above — the worker image tag is version-locked.
       - dependency-name: mcr.microsoft.com/playwright
