@@ -16,8 +16,15 @@ import { fileURLToPath } from 'node:url';
 import { RESULT_MARKER, type HarnessConfig, type HarnessResult } from './protocol.js';
 
 const STDOUT_CAP_BYTES = 10 * 1024 * 1024; // 10 MB
-/** Grace between the harness soft timeout and the parent SIGKILL backstop. */
-const HARD_KILL_GRACE_MS = 3_000;
+/**
+ * Grace between the harness soft timeout and the parent SIGKILL backstop.
+ *
+ * Must cover the harness's whole post-timeout path: capture a screenshot, then
+ * stop tracing and zip the trace, which bundles DOM snapshots and per-action
+ * screenshots and is not fast. At 3s a loaded machine SIGKILLed the child
+ * mid-write, losing exactly the artifacts a hung journey needs for debugging.
+ */
+const HARD_KILL_GRACE_MS = 10_000;
 
 export interface SandboxInput {
   /** The journey spec body (statements using page/context/expect). */

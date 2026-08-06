@@ -72,7 +72,7 @@ describe('journey sandbox (spawned child process)', () => {
     const elapsed = Date.now() - started;
     expect(outcome.status).toBe('timeout');
     expect(outcome.hardKilled).toBe(true);
-    // hard kill at timeoutMs + 3s grace, plus process teardown slack
+    // hard kill at timeoutMs + HARD_KILL_GRACE_MS, plus teardown slack
     expect(elapsed).toBeGreaterThanOrEqual(5_000);
     expect(elapsed).toBeLessThan(20_000);
   }, 30_000);
