@@ -5,3 +5,7 @@ dist/
 .DS_Store
 artifacts/
 coverage/
+
+# Local agent tooling
+CLAUDE.md
+.claude/
