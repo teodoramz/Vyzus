@@ -14,7 +14,8 @@ import { users } from '../db/schema.js';
 import { hashPassword, verifyPassword } from '../lib/password.js';
 import { hashToken } from '../lib/tokens.js';
 import { toUser } from '../lib/mappers.js';
-import { conflict, unauthorized } from '../lib/errors.js';
+import { conflict, unauthorized, tooManyRequests } from '../lib/errors.js';
+import { checkLoginAllowed, recordLoginFailure, clearLoginFailures } from '../lib/login-throttle.js';
 
 const REFRESH_COOKIE = 'refreshToken';
 const COOKIE_PATH = '/api/v1/auth';
@@ -90,6 +91,19 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
     { schema: { body: loginBodySchema, response: { 200: loginResponseSchema } } },
     async (req, reply) => {
       const { email, password } = req.body;
+
+      // Checked before the password is verified, so a locked-out caller costs
+      // no argon2 work — a throttle that still hashes is a CPU oracle.
+      const ip = req.ip;
+      const verdict = await checkLoginAllowed(app.redis, email, ip);
+      if (!verdict.allowed) {
+        reply.header('Retry-After', String(verdict.retryAfterSeconds));
+        throw tooManyRequests(
+          `Too many failed sign-in attempts. Try again in ${Math.ceil(verdict.retryAfterSeconds / 60)} minute(s).`,
+          'TOO_MANY_ATTEMPTS',
+        );
+      }
+
       const [user] = await app.db.select().from(users).where(eq(users.email, email)).limit(1);
       // Verify even when the user is missing to keep timing uniform.
       const ok = user
@@ -98,7 +112,13 @@ export const authRoutes: FastifyPluginAsyncZod = async (app) => {
             '$argon2id$v=19$m=65536,t=3,p=4$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
             password,
           );
-      if (!user || !ok) throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
+      if (!user || !ok) {
+        await recordLoginFailure(app.redis, email, ip);
+        throw unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
+      }
+      // A correct password clears the record; legitimate users are never
+      // locked out by someone else guessing at their address.
+      await clearLoginFailures(app.redis, email, ip);
 
       const accessToken = await app.tokens.signAccessToken({
         sub: user.id,

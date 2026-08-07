@@ -44,6 +44,14 @@
   - Both `uptime` modes drive the application's status badge. `DOWN` requires *every*
     liveness check to be failing; a single failing check among several is `DEGRADED`.
     A failing `journey` can degrade an application but never marks it `DOWN`.
+- FR-1.4 **Login throttling**: `POST /auth/login` refuses further attempts with `429`
+  and a `Retry-After` header once 8 failures accumulate inside 15 minutes. Two
+  independent counters, either of which can lock: one per email address (one account
+  ground down from many hosts) and one per client IP (one host spraying many
+  accounts). Checked before the password is verified, so a locked-out caller costs no
+  argon2 work. A correct password clears both counters. `POST /auth/setup` is not
+  throttled — it is single-use and 409s afterwards, so throttling it would only offer
+  a way to lock a fresh install out of its own first login.
 - FR-2.4 **Dead-man's switch**: if no check completes anywhere on the platform within
   `heartbeat.stall_minutes` (Settings, default 15, 0 disables), Vyzus raises a
   platform-level `monitoring.stalled` alert to every all-apps channel and banners the

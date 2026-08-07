@@ -21,6 +21,7 @@ export const unauthorized = (message = 'Unauthorized', code = 'UNAUTHENTICATED')
 export const forbidden = (message = 'Forbidden', code = 'FORBIDDEN') => new HttpError(403, code, message);
 export const notFound = (message = 'Not found', code = 'NOT_FOUND') => new HttpError(404, code, message);
 export const conflict = (message: string, code = 'CONFLICT') => new HttpError(409, code, message);
+export const tooManyRequests = (message: string, code = 'TOO_MANY_REQUESTS') => new HttpError(429, code, message);
 
 interface ErrorBody {
   error: { code: string; message: string };
