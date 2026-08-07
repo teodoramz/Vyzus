@@ -1,5 +1,5 @@
 # Dashboard — build the React SPA, serve with nginx (also reverse-proxies /api and /ws)
-FROM node:24-slim AS build
+FROM node:25-slim AS build
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -11,7 +11,7 @@ COPY apps/dashboard apps/dashboard
 COPY tsconfig.base.json ./
 RUN pnpm --filter @vyzus/shared build && pnpm --filter @vyzus/dashboard build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 # vyzus-common.conf is included from inside a server block, so it must NOT sit
 # in conf.d/ — nginx loads everything there at http level and would reject it.
 COPY infra/nginx-common.conf /etc/nginx/vyzus-common.conf

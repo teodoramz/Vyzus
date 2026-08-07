@@ -1,5 +1,5 @@
 # API — Fastify server (no browsers needed here)
-FROM node:24-slim AS build
+FROM node:25-slim AS build
 RUN corepack enable
 WORKDIR /app
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -16,7 +16,7 @@ COPY tsconfig.base.json ./
 RUN pnpm --filter @vyzus/shared build && pnpm --filter @vyzus/api build \
  && pnpm --filter @vyzus/api deploy --prod /out
 
-FROM node:24-slim
+FROM node:25-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .
