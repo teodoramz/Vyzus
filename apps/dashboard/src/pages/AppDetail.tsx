@@ -303,7 +303,7 @@ export function AppDetail(): JSX.Element {
             <h2 className="font-semibold">
               Screenshots <span className="font-normal text-slate-400 dark:text-zinc-500">— {activeCheck.name}</span>
             </h2>
-            <ScreenshotGallery checkId={activeCheck.id} />
+            <ScreenshotGallery appId={app.id} />
           </section>
         </>
       )}

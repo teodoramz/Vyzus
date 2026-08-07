@@ -132,7 +132,7 @@ page — open it with `npx playwright show-trace <file>` for a step-by-step repl
   the latest screenshot thumbnail. Updates live over WebSocket; falls back to
   polling if the connection drops.
 - **App detail**: availability over 24h/7d/30d, a response-time chart, full run
-  history (filterable by status), a screenshot gallery, and the incident timeline.
+  history (filterable by status), a screenshot gallery (every capture for the application in one timeline, each tagged with the check that produced it), and the incident timeline.
 - **On-demand screenshot**: the "Screenshot now" button on any app forces an
   immediate capture regardless of the check's normal screenshot policy.
 - **Incidents**: open automatically after a check's configured number of

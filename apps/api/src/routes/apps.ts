@@ -311,12 +311,15 @@ export const appRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req) => {
       const { id } = req.params;
-      const { cursor, limit, status, checkId } = req.query;
+      const { cursor, limit, status, checkId, hasScreenshot } = req.query;
       await assertAppAccess(app.db, req.authUser!, id);
 
       const conditions = [eq(checks.appId, id)];
       if (checkId) conditions.push(eq(runs.checkId, checkId));
       if (status) conditions.push(eq(runs.status, status));
+      // Filtered in SQL, not client-side, so a page of `limit` is `limit`
+      // actual screenshots rather than `limit` raw runs mostly thrown away.
+      if (hasScreenshot) conditions.push(isNotNull(runs.screenshotPath));
       if (cursor) {
         const c = decodeCursor(cursor);
         const cDate = new Date(c.s);

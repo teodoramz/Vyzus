@@ -110,6 +110,7 @@ export const appsApi = {
       limit?: number | undefined;
       status?: RunStatus | undefined;
       checkId?: string | undefined;
+      hasScreenshot?: boolean | undefined;
     } = {},
   ) =>
     apiRequest<{ runs: AppRun[]; nextCursor: string | null }>(`/apps/${id}/runs`, appRunListResponseSchema, {

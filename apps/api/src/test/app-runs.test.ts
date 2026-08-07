@@ -187,3 +187,54 @@ describe('GET /apps/:id/runs', () => {
     expect(res.json().runs).toHaveLength(0);
   });
 });
+
+// The screenshot gallery is scoped to the application, not the selected check,
+// so every capture stays in one timeline with a tag saying which check made it.
+describe('GET /apps/:id/runs?hasScreenshot=true', () => {
+  it('returns screenshot runs from every check of the app, tagged with the check', async () => {
+    const app = await createApp();
+    const uptimeCheckId = app.checks[0].id;
+    const journey = await addJourneyCheck(app.id);
+
+    const withShotA = randomUUID();
+    const withShotB = randomUUID();
+    await ctx.dbHandle.db.insert(runs).values([
+      {
+        id: withShotA,
+        checkId: uptimeCheckId,
+        status: 'passed',
+        trigger: 'schedule',
+        startedAt: new Date('2026-01-01T00:00:01Z'),
+        durationMs: 100,
+        screenshotPath: `${app.id}/${withShotA}/screenshot.png`,
+      },
+      {
+        id: withShotB,
+        checkId: journey.id,
+        status: 'failed',
+        trigger: 'schedule',
+        startedAt: new Date('2026-01-01T00:00:02Z'),
+        durationMs: 100,
+        screenshotPath: `${app.id}/${withShotB}/screenshot.png`,
+      },
+    ]);
+    // A run with no screenshot, which must not appear.
+    const noShot = await insertRun(uptimeCheckId, { startedAt: new Date('2026-01-01T00:00:03Z') });
+
+    const res = await ctx.app.inject({
+      method: 'GET',
+      url: `/api/v1/apps/${app.id}/runs?hasScreenshot=true&limit=100`,
+      headers: authHeader(adminToken),
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { runs: { id: string; hasScreenshot: boolean; checkName: string }[] };
+
+    // Filtered in SQL: every row really has one, and the bare run is absent.
+    expect(body.runs.map((r) => r.id).sort()).toEqual([withShotA, withShotB].sort());
+    expect(body.runs.map((r) => r.id)).not.toContain(noShot);
+    for (const run of body.runs) expect(run.hasScreenshot).toBe(true);
+
+    // Spans more than one check, and each tile knows which — the whole point.
+    expect(new Set(body.runs.map((r) => r.checkName)).size).toBe(2);
+  });
+});
