@@ -43,7 +43,7 @@ async function seedAppCheck() {
       type: 'uptime',
       name: 'U',
       intervalMinutes: 5,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, screenshot: 'always' },
+      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'always' },
     })
     .returning();
   return { app: app!, check: check! };

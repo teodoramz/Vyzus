@@ -306,3 +306,49 @@ describe('worker pipeline', () => {
     expect(allRuns).toHaveLength(0);
   });
 });
+
+// Visual regression through the real pipeline. A defaced or broken-CSS deploy
+// still returns 200 and still satisfies every selector assertion — pixels are
+// the only signal, and they only exist because screenshots are kept per run.
+describe('visual regression', () => {
+  it('fails a run whose page looks different, and passes when it does not', async () => {
+    const { check } = await seedAppWithCheck(handle, site.url, {}, { screenshot: 'always', visualDiffPercent: 5 });
+
+    // First run: nothing to compare against, so it must pass.
+    const first = randomUUID();
+    await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: first });
+    const [run1] = await handle.db.select().from(runs).where(eq(runs.id, first));
+    expect(run1!.status).toBe('passed');
+
+    // Second run, unchanged page: still passes, and now records the measurement.
+    const second = randomUUID();
+    await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: second });
+    const [run2] = await handle.db.select().from(runs).where(eq(runs.id, second));
+    expect(run2!.status).toBe('passed');
+    expect((run2!.metrics as Record<string, unknown>).visualDiffPercent).toBeTypeOf('number');
+
+    // Third run after a repaint: same HTTP 200, same #hero selector, but the
+    // page looks completely different.
+    site.setRepainted(true);
+    const third = randomUUID();
+    await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: third });
+    const [run3] = await handle.db.select().from(runs).where(eq(runs.id, third));
+    expect(run3!.status).toBe('failed');
+    expect(run3!.errorMessage).toMatch(/changed visually/i);
+    expect((run3!.metrics as Record<string, unknown>).visualDiffPercent as number).toBeGreaterThan(5);
+  }, 120_000);
+
+  it('never fails on visual change when the threshold is off', async () => {
+    const { check } = await seedAppWithCheck(handle, site.url, {}, { screenshot: 'always', visualDiffPercent: 0 });
+    site.setRepainted(false);
+    const a = randomUUID();
+    await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: a });
+
+    site.setRepainted(true);
+    const b = randomUUID();
+    await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: b });
+    const [run] = await handle.db.select().from(runs).where(eq(runs.id, b));
+    expect(run!.status).toBe('passed');
+    site.setRepainted(false);
+  }, 120_000);
+});

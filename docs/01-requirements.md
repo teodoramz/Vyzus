@@ -19,6 +19,13 @@
     plus the first success afterwards), `on_failure`, or `never`. `on_change`/`on_failure` may also
     set `screenshotRefreshMinutes` so a healthy check refreshes its picture on that cadence
     (default 60 for new checks) instead of showing whatever it looked like at the last incident.
+    `visualDiffPercent` (0 = off, the default) compares each screenshot with the previous
+    stored one for the same check and fails when that percentage of pixels or more differ —
+    catching defacement, broken CSS and blank-page deploys that still return HTTP 200 and
+    satisfy every selector assertion. A percentage rather than a pixel count, so it means
+    the same at any viewport. Requires a screenshot mode that captures on passing runs; the
+    first capture has no baseline and always passes, as does a run whose baseline file
+    retention has already removed. A size change counts as fully changed.
     `maxDurationMs` (0 = off, the default) fails a run that returned the expected status
     but took longer, so "up but badly degraded" stops being invisible. Measured from
     navigation through the last assertion and recorded as `responseMs` in run metrics —

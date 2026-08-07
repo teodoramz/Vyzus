@@ -8,7 +8,7 @@ import type { Job } from 'bullmq';
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { Logger } from 'pino';
-import { eq, sql } from 'drizzle-orm';
+import { and, desc, eq, isNotNull, ne, sql } from 'drizzle-orm';
 import {
   QUEUE_NAMES,
   CHECK_JOB_NAMES,
@@ -27,10 +27,12 @@ import {
   type WsEvent,
 } from '@vyzus/shared';
 import { decryptJson } from '@vyzus/shared/crypto';
+import { promises as fs } from 'node:fs';
 import { applications, checks, runs, type ApplicationRow, type CheckRow } from '@vyzus/shared/db';
 import type { WorkerConfig } from './config.js';
 import type { WorkerDatabase } from './db.js';
 import { ArtifactStore } from './artifacts.js';
+import { comparePng, type DiffOutcome } from './visual-diff.js';
 import { executeUptime } from './executors/uptime.js';
 import { executeJourney } from './executors/journey.js';
 import { executePort } from './executors/port.js';
@@ -90,6 +92,49 @@ async function updateCheckAfterRun(
 
     await tx.update(checks).set(patch).where(eq(checks.id, check.id));
   });
+}
+
+/** The configured visual-diff threshold, or 0 when this isn't an http-mode check. */
+function uptimeVisualThreshold(config: CheckRow['config']): number {
+  const parsed = uptimeConfigSchema.safeParse(config);
+  if (!parsed.success || parsed.data.mode !== 'http') return 0;
+  return parsed.data.visualDiffPercent;
+}
+
+/**
+ * Compare this run's screenshot against the most recent earlier one for the
+ * same check. Returns null when there is nothing to compare against (the first
+ * capture, or a file retention has already removed) — a check with no baseline
+ * passes rather than failing on our own missing data.
+ */
+async function compareWithPreviousScreenshot(
+  db: WorkerDatabase,
+  store: ArtifactStore,
+  checkId: string,
+  currentRunId: string,
+  currentPath: string,
+  log: ProcessorDeps['log'],
+): Promise<DiffOutcome | null> {
+  const [previous] = await db
+    .select({ screenshotPath: runs.screenshotPath })
+    .from(runs)
+    .where(and(eq(runs.checkId, checkId), isNotNull(runs.screenshotPath), ne(runs.id, currentRunId)))
+    .orderBy(desc(runs.startedAt), desc(runs.id))
+    .limit(1);
+  if (!previous?.screenshotPath) return null;
+
+  try {
+    const [before, after] = await Promise.all([
+      fs.readFile(store.absolutePath(previous.screenshotPath)),
+      fs.readFile(store.absolutePath(currentPath)),
+    ]);
+    return comparePng(before, after);
+  } catch (err) {
+    // A missing baseline file (retention, manual cleanup) must never fail a
+    // run that is otherwise healthy.
+    log.warn({ checkId, err }, 'visual diff skipped — could not read a screenshot');
+    return null;
+  }
 }
 
 export function createProcessor(deps: ProcessorDeps): {
@@ -244,6 +289,29 @@ export function createProcessor(deps: ProcessorDeps): {
       appId: app.id,
       runId,
     });
+
+    // Visual regression, before the run is persisted so the verdict is stored
+    // with it. Compared against the previous stored screenshot for this check —
+    // which only exists because screenshots are no longer superseded.
+    //
+    // A passing run only: a run that already failed has its own reason, and
+    // relabelling it as "looks different" would bury the real cause.
+    if (
+      result.status === 'passed' &&
+      result.screenshotPath &&
+      check.type === 'uptime' &&
+      uptimeVisualThreshold(check.config) > 0
+    ) {
+      const outcome = await compareWithPreviousScreenshot(db, store, check.id, runId, result.screenshotPath, log);
+      if (outcome) {
+        result.metrics = { ...(result.metrics ?? {}), visualDiffPercent: Number(outcome.changedPercent.toFixed(3)) };
+        const threshold = uptimeVisualThreshold(check.config);
+        if (outcome.comparable && outcome.changedPercent >= threshold) {
+          result.status = 'failed';
+          result.errorMessage = `Page changed visually: ${outcome.changedPercent.toFixed(1)}% of pixels differ from the previous screenshot (limit ${threshold}%)${outcome.reason ? ` — ${outcome.reason}` : ''}`;
+        }
+      }
+    }
 
     // Persist the run + denormalized check fields. The check (or its app) can be
     // deleted while the browser run is in flight — the cascade removes the checks

@@ -12,6 +12,9 @@ export interface TestSite {
   url: string;
   /** Flip to make the server return 503 (simulates the target dying). */
   setDown(down: boolean): void;
+  /** Flip the page's look without changing status or structure — a defacement
+   * or broken-CSS deploy, which only a pixel comparison can see. */
+  setRepainted(repainted: boolean): void;
   /** Headers of the most recent request the server actually received —
    * lets a test assert the real outbound fingerprint (UA, Accept-Language)
    * rather than trusting the options passed into newContext. */
@@ -21,6 +24,7 @@ export interface TestSite {
 
 export async function startTestSite(): Promise<TestSite> {
   let down = false;
+  let repainted = false;
   let lastHeaders: http.IncomingHttpHeaders | null = null;
   const server = http.createServer((req, res) => {
     lastHeaders = req.headers;
@@ -59,7 +63,8 @@ export async function startTestSite(): Promise<TestSite> {
     }
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(
-      '<html><head><title>Test Site</title></head><body>' +
+      '<html><head><title>Test Site</title></head>' +
+        `<body style="background:${repainted ? '#000' : '#fff'};color:${repainted ? '#fff' : '#000'}">` +
         '<h1 id="hero">Vyzus test target</h1>' +
         '<p>Welcome to the demo shop.</p>' +
         '<a href="/about">About</a>' +
@@ -72,6 +77,9 @@ export async function startTestSite(): Promise<TestSite> {
     url: `http://127.0.0.1:${port}/`,
     setDown(v: boolean) {
       down = v;
+    },
+    setRepainted(v: boolean) {
+      repainted = v;
     },
     lastRequestHeaders: () => lastHeaders,
     close: () => new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve()))),
@@ -122,7 +130,14 @@ export async function seedAppWithCheck(
       intervalMinutes: 1,
       timeoutMs: 10_000,
       failureThreshold: 2,
-      config: { mode: 'http', expectedStatus: 200, screenshot: 'on_failure', maxDurationMs: 0, ...uptimeConfig },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        screenshot: 'on_failure',
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        ...uptimeConfig,
+      },
       ...checkOverrides,
     })
     .returning();

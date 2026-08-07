@@ -55,6 +55,17 @@ export const httpModeConfigSchema = z
     // capture — that is the platform's own overhead, and a threshold tripped by
     // a slow PNG encode would be a false alarm.
     maxDurationMs: z.number().int().min(0).max(300_000).default(0),
+    // Visual regression: fail when this percentage of pixels or more changed
+    // against the previous stored screenshot of the same check. Catches
+    // defacement, broken CSS and blank-page deploys that still return HTTP
+    // 200 — failures no status-code or selector assertion can see.
+    //
+    // 0 disables it, which is the default. A percentage rather than a pixel
+    // count so the number means the same thing at any viewport size. Requires
+    // a screenshot mode that actually captures on passing runs (`always`, or
+    // `on_change`/`on_failure` with a refresh cadence); with nothing to compare
+    // against, the check simply passes.
+    visualDiffPercent: z.number().min(0).max(100).default(0),
   })
   .strict();
 export type HttpModeConfig = z.infer<typeof httpModeConfigSchema>;

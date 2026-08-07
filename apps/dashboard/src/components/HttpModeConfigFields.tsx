@@ -159,6 +159,31 @@ export function HttpModeConfigFields({
             : 'Off — a check passes however slow it was, so "up but badly degraded" stays invisible.'}
         </p>
       </div>
+
+      <div>
+        <label htmlFor="visualDiffPercent" className={labelClass}>
+          Fail if the page looks different by
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            id="visualDiffPercent"
+            type="number"
+            min={0}
+            max={100}
+            step={0.5}
+            placeholder="off"
+            value={config.visualDiffPercent || ''}
+            onChange={(e) => onChange({ ...config, visualDiffPercent: e.target.value ? Number(e.target.value) : 0 })}
+            className={`${inputClass} max-w-32`}
+          />
+          <span className="text-sm text-slate-500 dark:text-zinc-400">% of pixels</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+          {config.visualDiffPercent > 0
+            ? `Compares each screenshot with the previous one for this check and fails when ${config.visualDiffPercent}% or more of the pixels differ — catching defacement, broken CSS and blank-page deploys that still return 200. Needs a screenshot mode that captures on passing runs; the first capture has nothing to compare against and always passes.`
+            : 'Off — a defaced or blank page that still returns 200 and keeps its selectors will pass.'}
+        </p>
+      </div>
     </div>
   );
 }

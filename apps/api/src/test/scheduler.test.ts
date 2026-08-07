@@ -48,7 +48,7 @@ async function seedCheck(intervalMinutes = 5, enabled = true, appEnabled = true)
       name: 'U',
       intervalMinutes,
       enabled,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, screenshot: 'on_failure' },
+      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'on_failure' },
     })
     .returning();
   return { app: app!, check: check! };
