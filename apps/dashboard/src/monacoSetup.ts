@@ -9,11 +9,14 @@
 // lands in the app's main entry chunk. Only the editor core + TypeScript
 // language service are pulled in (not `monaco-editor`'s full barrel, which
 // registers every language Monaco supports and would bloat the chunk further).
-import * as monaco from 'monaco-editor/esm/vs/editor/editor.api';
-import 'monaco-editor/esm/vs/language/typescript/monaco.contribution';
+// monaco-editor 0.56 added an `exports` map that rewrites `./*` to
+// `./esm/vs/*`, so the `esm/vs/` prefix is now implicit and the explicit `.js`
+// is required. Keeping the old paths would resolve to `esm/vs/esm/vs/...`.
+import * as monaco from 'monaco-editor/editor/editor.api.js';
+import 'monaco-editor/language/typescript/monaco.contribution.js';
 import { loader } from '@monaco-editor/react';
-import EditorWorker from 'monaco-editor/esm/vs/editor/editor.worker?worker';
-import TypescriptWorker from 'monaco-editor/esm/vs/language/typescript/ts.worker?worker';
+import EditorWorker from 'monaco-editor/editor/editor.worker.js?worker';
+import TypescriptWorker from 'monaco-editor/language/typescript/ts.worker.js?worker';
 
 self.MonacoEnvironment = {
   getWorker(_workerId: string, label: string) {
