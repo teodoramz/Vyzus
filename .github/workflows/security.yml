@@ -23,25 +23,25 @@ jobs:
       security-events: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: github/codeql-action/init@v3
+      - uses: actions/checkout@v7
+      - uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           queries: security-and-quality
-      - uses: github/codeql-action/analyze@v3
+      - uses: github/codeql-action/analyze@v4
 
   dependency-audit:
     name: Dependency vulnerability audit (pnpm)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
       # Deliberately no `cache: pnpm` here: this job reads the lockfile and
       # never installs, so there is no pnpm store on disk. setup-node's
       # post-job cache-save then fails with "Path(s) specified in the action
       # for caching do(es) not exist", failing a job whose audit had passed.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
       # Fails on known vulnerabilities of high/critical severity anywhere in the
@@ -69,8 +69,8 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/dependency-review-action@v4
+      - uses: actions/checkout@v7
+      - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
           comment-summary-in-pr: on-failure
@@ -80,7 +80,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0 # scan full history
       - uses: gitleaks/gitleaks-action@v2
@@ -102,7 +102,7 @@ jobs:
         # and the dashboard ships an nginx runtime of its own.
         image: [api, worker, dashboard]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build ${{ matrix.image }} image
         run: docker build -f infra/${{ matrix.image }}.Dockerfile -t vyzus-${{ matrix.image }}:scan .
       - name: Trivy scan (OS packages + bundled node deps)
@@ -113,7 +113,7 @@ jobs:
           output: trivy-${{ matrix.image }}.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         # Dependabot-triggered runs get a read-only GITHUB_TOKEN regardless of
         # the `permissions:` above, so uploading to code scanning is refused
         # ("Resource not accessible by integration") and fails the job. The scan
@@ -134,7 +134,7 @@ jobs:
       security-events: write
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Trivy filesystem + misconfiguration scan
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -144,7 +144,7 @@ jobs:
           output: trivy-repo.sarif
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         # Dependabot-triggered runs get a read-only GITHUB_TOKEN regardless of
         # the `permissions:` above, so uploading to code scanning is refused
         # ("Resource not accessible by integration") and fails the job. The scan

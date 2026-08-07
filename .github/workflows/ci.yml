@@ -31,7 +31,7 @@ jobs:
       code: ${{ steps.filter.outputs.code }}
       docker: ${{ steps.filter.outputs.docker }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - id: filter
@@ -73,9 +73,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -112,11 +112,11 @@ jobs:
     env:
       VYZUS_TEST_NO_DOCKER: '1' # services above replace docker-compose.test.yml
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4 # version pinned by packageManager in package.json
+      - uses: pnpm/action-setup@v6 # version pinned by packageManager in package.json
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
@@ -133,7 +133,7 @@ jobs:
 
       - name: Cache Playwright browser
         id: pw-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
@@ -168,10 +168,10 @@ jobs:
       matrix:
         image: [api, worker, dashboard]
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
       - name: Build ${{ matrix.image }} image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: infra/${{ matrix.image }}.Dockerfile
@@ -184,7 +184,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: worker package.json playwright == worker.Dockerfile image tag
         run: |
           pkg_version=$(node -p "require('./apps/worker/package.json').dependencies.playwright")
