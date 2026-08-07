@@ -22,13 +22,40 @@ function resolveMigrationsFolder(): string {
 
 const migrationsFolder = resolveMigrationsFolder();
 
+/**
+ * Fixed key for the migration advisory lock. Arbitrary but stable — only ever
+ * compared against itself. ("VYZU" as hex, so it is recognisable in
+ * `pg_locks` when someone is working out who is holding it.)
+ */
+const MIGRATION_LOCK_KEY = 0x56595a55;
+
 export async function runMigrations(databaseUrl: string): Promise<void> {
-  // A dedicated single connection for migrations (max: 1 avoids advisory-lock
-  // contention across a pool).
+  // A dedicated single connection for migrations, so the advisory lock below
+  // and migrate() itself share one session — the lock is session-scoped, and
+  // taking it on a different pooled connection would not protect anything.
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
   try {
-    const db = drizzle(sql);
-    await migrate(db, { migrationsFolder });
+    // Drizzle's migrator does not lock: it creates the bookkeeping table if
+    // absent, reads which migrations are applied, then applies the rest. Two
+    // API processes starting together — which is exactly what
+    // `docker compose up -d --build api` does, briefly — both read "none
+    // applied" and both try to apply, so the loser dies on an object that now
+    // already exists ("constraint ... does not exist", "relation ... already
+    // exists"). It restarted and recovered, but a fatal boot error on every
+    // redeploy is not something an operator should have to learn to ignore.
+    //
+    // Blocking, not try-lock: the second process should wait and then find
+    // nothing to do, rather than start serving against a half-migrated schema.
+    // A crashed holder releases automatically when its session ends.
+    await sql`SELECT pg_advisory_lock(${MIGRATION_LOCK_KEY}::bigint)`;
+    try {
+      // Read *after* acquiring the lock, so a process that waited sees what the
+      // winner just applied instead of its own stale view.
+      const db = drizzle(sql);
+      await migrate(db, { migrationsFolder });
+    } finally {
+      await sql`SELECT pg_advisory_unlock(${MIGRATION_LOCK_KEY}::bigint)`.catch(() => undefined);
+    }
   } finally {
     await sql.end({ timeout: 5 });
   }

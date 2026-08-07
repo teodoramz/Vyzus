@@ -32,8 +32,12 @@ layer. **The worker image tag must match the `playwright` version in
 - worker: `shm_size: 1gb` (Chromium requirement), `no-new-privileges`, non-root `pwuser`,
   2 GB memory limit. Scale with `docker compose up -d --scale worker=3` — BullMQ
   distributes jobs automatically, no extra config.
-- api: runs as `node` user, migrations run on process start before listening
-  (drizzle `migrate()` — safe because concurrent API replicas aren't used in v1).
+- api: runs as `node` user, migrations run on process start before listening.
+  Drizzle's migrator does not lock, so `runMigrations()` wraps it in a Postgres
+  advisory lock: concurrent starters queue and the late ones find nothing to do.
+  Without it, the moment during `docker compose up -d --build api` when the old
+  and new containers overlap was enough to make the loser die on an object the
+  winner had already created.
 - Only nginx publishes a host port. It can terminate TLS itself (see below), or you
   can leave it on HTTP behind an external terminator (Caddy/Traefik/cloud LB) — either
   way set `PUBLIC_URL` to the address browsers actually use.
