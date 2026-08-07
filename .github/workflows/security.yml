@@ -92,7 +92,7 @@ jobs:
       - name: Build ${{ matrix.image }} image
         run: docker build -f infra/${{ matrix.image }}.Dockerfile -t vyzus-${{ matrix.image }}:scan .
       - name: Trivy scan (OS packages + bundled node deps)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: vyzus-${{ matrix.image }}:scan
           format: sarif
@@ -118,7 +118,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy filesystem + misconfiguration scan
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           scan-type: fs
           scanners: vuln,misconfig,secret
