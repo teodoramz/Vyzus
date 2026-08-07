@@ -1,0 +1,29 @@
+# gitleaks configuration.
+#
+# The default ruleset is kept in full; this only adds an allowlist for two
+# literal values that appear in the test suite and are unmistakably fixtures.
+#
+# Allowlisted by VALUE, deliberately not by path. Excluding whole test files
+# would mean a real credential pasted into a test — a plausible accident —
+# would sail through unnoticed. Matching the exact dummy strings keeps every
+# other secret in those same files in scope.
+
+title = "Vyzus"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = """
+Test-only cryptographic material. Neither value has ever protected anything:
+the encryption key is the byte sequence 00 11 22 .. ff repeated, and the JWT
+secret is a literal placeholder. Both exist so the integration tests can boot
+an API instance, and both are visible in apps/*/src/test/.
+"""
+regexTarget = "match"
+regexes = [
+  '''00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff''',
+  '''ffeeddccbbaa99887766554433221100ffeeddccbbaa99887766554433221100''',
+  '''test-jwt-secret-0123456789abcdef''',
+  '''secret-secret-secret-1234''',
+]
