@@ -44,6 +44,7 @@ app's response-time chart.
 | IP version | `auto`, or force IPv4 / IPv6 |
 | TLS | TCP only: perform a TLS handshake and validate the certificate |
 | Allow an insecure certificate | accept self-signed / untrusted / expired certs; details are still recorded |
+| Warn before expiry (days) | fail the check once the certificate has this many days or less remaining; `0` disables it |
 
 TCP is unambiguous: connect succeeds, is refused, or times out. UDP has no
 handshake, so silence within the timeout is reported as reachable rather than

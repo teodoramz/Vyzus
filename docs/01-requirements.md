@@ -36,6 +36,10 @@
     fails the check exactly like a closed port. `allowInsecureCert: true` relaxes this to "handshake
     completed" only (for a deliberately self-signed internal service); certificate metrics (issuer,
     subject, expiry, trust) are still recorded either way.
+  - `certExpiryWarningDays` (0 = off, the default) fails the check while the certificate is still
+    valid but within that many days of expiring, so the renewal has a window to happen in — an
+    already-expired certificate is too late to be actionable. Applies regardless of
+    `allowInsecureCert`: a self-signed certificate expires like any other.
   - Both `uptime` modes drive the application's status badge. `DOWN` requires *every*
     liveness check to be failing; a single failing check among several is `DEGRADED`.
     A failing `journey` can degrade an application but never marks it `DOWN`.

@@ -76,6 +76,15 @@ function checkTcp(config: PortModeConfig, timeoutMs: number, startedAt: number):
  * `authorized`/`authorizationError` are recorded in metrics without failing
  * the check.
  */
+/** Says how long is left and until when, so the alert is actionable without opening the run. */
+function certExpiryMessage(config: PortModeConfig, daysLeft: number, validTo: string | null): string {
+  const target = `${config.host}:${config.port}`;
+  const until = validTo ? ` (valid until ${validTo})` : '';
+  if (daysLeft < 0) return `TLS certificate for ${target} expired ${-daysLeft} day(s) ago${until}`;
+  if (daysLeft === 0) return `TLS certificate for ${target} expires today${until}`;
+  return `TLS certificate for ${target} expires in ${daysLeft} day(s)${until} — warning threshold is ${config.certExpiryWarningDays} day(s)`;
+}
+
 function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number): Promise<ExecutionResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -102,8 +111,16 @@ function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number):
       const durationMs = Date.now() - startedAt;
       const cert = socket.getPeerCertificate();
       const hasCert = cert && Object.keys(cert).length > 0;
+      // Floor, not round: a certificate with 13.6 days left has 13 usable days,
+      // and reporting 14 would let it slip past a 14-day threshold unnoticed.
+      const daysUntilExpiry =
+        hasCert && cert.valid_to ? Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000) : null;
+      const warnDays = config.certExpiryWarningDays;
+      const expiringSoon = warnDays > 0 && daysUntilExpiry !== null && daysUntilExpiry <= warnDays;
       finish({
-        status: 'passed',
+        // The handshake succeeded; failing here is a deliberate early warning so
+        // the renewal happens before the certificate actually lapses.
+        status: expiringSoon ? 'failed' : 'passed',
         durationMs,
         metrics: {
           host: config.host,
@@ -115,12 +132,12 @@ function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number):
           certIssuer: hasCert ? (cert.issuer?.CN ?? null) : null,
           certValidFrom: hasCert ? (cert.valid_from ?? null) : null,
           certValidTo: hasCert ? (cert.valid_to ?? null) : null,
-          daysUntilExpiry:
-            hasCert && cert.valid_to ? Math.round((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000) : null,
+          daysUntilExpiry,
+          certExpiryWarningDays: warnDays > 0 ? warnDays : null,
           authorized: socket.authorized,
           authorizationError: socket.authorized ? null : String(socket.authorizationError ?? 'unknown'),
         },
-        errorMessage: null,
+        errorMessage: expiringSoon ? certExpiryMessage(config, daysUntilExpiry, cert.valid_to ?? null) : null,
         screenshotPath: null,
         tracePath: null,
       });

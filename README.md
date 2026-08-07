@@ -21,8 +21,9 @@ response-time metrics, screenshots, incident history and alerting.
     - `port` — a raw TCP or UDP reachability probe against any host and port, with
       one-click presets for common services and an optional forced IPv4/IPv6 family.
       TCP ports can additionally perform a **TLS handshake and validate the
-      certificate** (trust chain, expiry, hostname), with an opt-in escape hatch for
-      deliberately self-signed internal services.
+      certificate** (trust chain, expiry, hostname), warn a configurable number of days
+      before that certificate expires, and an opt-in escape hatch for deliberately
+      self-signed internal services.
   - **User journey** — a full Playwright test (recorded with `playwright codegen` or
     hand-written) uploaded/edited in the dashboard, simulating a real user flow
     (login, search, checkout, …). A failing journey never marks the application

@@ -157,6 +157,23 @@ export function PortConfigFields({
                   ? "The handshake completing is all that's checked — cert details (issuer, expiry, trust) are still recorded on every run, just not enforced. For a deliberately self-signed internal service."
                   : 'An invalid certificate — expired, self-signed, untrusted CA, or hostname mismatch — fails the check exactly like a closed port.'}
               </p>
+
+              <label className="block space-y-1 text-sm">
+                <span className="font-medium">Warn before expiry (days)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={365}
+                  value={config.certExpiryWarningDays}
+                  onChange={(e) => onChange({ ...config, certExpiryWarningDays: Number(e.target.value) || 0 })}
+                  className="w-32 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-cyan-500 focus:outline-none dark:border-white/10 dark:bg-white/5 dark:focus:border-cyan-400"
+                />
+              </label>
+              <p className="text-xs text-slate-400 dark:text-zinc-500">
+                {config.certExpiryWarningDays > 0
+                  ? `The check fails once the certificate has ${config.certExpiryWarningDays} day(s) or less remaining, so the renewal has a window to happen in.`
+                  : 'Off — the certificate only fails the check once it has already expired, which is usually too late to act on.'}
+              </p>
             </>
           )}
         </div>

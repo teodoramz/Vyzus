@@ -50,6 +50,7 @@ describe('port executor', () => {
             family: 'auto',
             tls: false,
             allowInsecureCert: false,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 5_000,
         });
@@ -77,6 +78,7 @@ describe('port executor', () => {
           family: 'auto',
           tls: false,
           allowInsecureCert: false,
+          certExpiryWarningDays: 0,
         },
         timeoutMs: 5_000,
       });
@@ -94,6 +96,7 @@ describe('port executor', () => {
           family: 'auto',
           tls: false,
           allowInsecureCert: false,
+          certExpiryWarningDays: 0,
         },
         timeoutMs: 500,
       });
@@ -113,6 +116,7 @@ describe('port executor', () => {
             family: '4',
             tls: false,
             allowInsecureCert: false,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 5_000,
         });
@@ -136,6 +140,7 @@ describe('port executor', () => {
             family: 'auto',
             tls: false,
             allowInsecureCert: false,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 5_000,
         });
@@ -158,6 +163,7 @@ describe('port executor', () => {
             family: 'auto',
             tls: false,
             allowInsecureCert: false,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 400,
         });
@@ -178,6 +184,7 @@ describe('port executor', () => {
           family: 'auto',
           tls: false,
           allowInsecureCert: false,
+          certExpiryWarningDays: 0,
         },
         timeoutMs: 2_000,
       });
@@ -190,14 +197,15 @@ describe('port executor', () => {
     let certDir: string;
     let cert: string;
     let key: string;
+    // A second pair valid well past any threshold under test, so "expiring
+    // soon" and "not expiring soon" are distinguished by the cert's real
+    // remaining lifetime rather than by mocking the clock.
+    let longCert: string;
+    let longKey: string;
 
-    beforeAll(async () => {
-      certDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vyzus-tls-'));
-      const keyPath = path.join(certDir, 'key.pem');
-      const certPath = path.join(certDir, 'cert.pem');
-      // Self-signed, 1-day validity — plenty for a test run, and short
-      // enough that a stale leftover on disk would never be mistaken for
-      // something real.
+    async function makeSelfSigned(name: string, days: number): Promise<{ cert: string; key: string }> {
+      const keyPath = path.join(certDir, `${name}-key.pem`);
+      const certPath = path.join(certDir, `${name}-cert.pem`);
       execFileSync('openssl', [
         'req',
         '-x509',
@@ -209,12 +217,20 @@ describe('port executor', () => {
         '-out',
         certPath,
         '-days',
-        '1',
+        String(days),
         '-subj',
         '/CN=vyzus-test-self-signed',
       ]);
-      key = await fs.readFile(keyPath, 'utf8');
-      cert = await fs.readFile(certPath, 'utf8');
+      return { key: await fs.readFile(keyPath, 'utf8'), cert: await fs.readFile(certPath, 'utf8') };
+    }
+
+    beforeAll(async () => {
+      certDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vyzus-tls-'));
+      // Self-signed, 1-day validity — plenty for a test run, and short
+      // enough that a stale leftover on disk would never be mistaken for
+      // something real.
+      ({ cert, key } = await makeSelfSigned('short', 1));
+      ({ cert: longCert, key: longKey } = await makeSelfSigned('long', 200));
     });
 
     afterAll(async () => {
@@ -233,6 +249,7 @@ describe('port executor', () => {
             family: 'auto',
             tls: true,
             allowInsecureCert: false,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 5_000,
         });
@@ -255,6 +272,7 @@ describe('port executor', () => {
             family: 'auto',
             tls: true,
             allowInsecureCert: true,
+            certExpiryWarningDays: 0,
           },
           timeoutMs: 5_000,
         });
@@ -264,6 +282,60 @@ describe('port executor', () => {
         expect(metrics.authorizationError).toBeTruthy();
         expect(metrics.certSubject).toBe('vyzus-test-self-signed');
         expect(typeof metrics.daysUntilExpiry).toBe('number');
+        // Threshold off: nothing recorded, and expiry cannot affect the verdict.
+        expect(metrics.certExpiryWarningDays).toBeNull();
+      } finally {
+        await server.close();
+      }
+    });
+
+    // Without this, a certificate only fails once it has already expired.
+    it('fails a cert that is inside the expiry warning window, despite a clean handshake', async () => {
+      const server = await startTlsServer(cert, key); // 1 day of validity left
+      try {
+        const result = await executePort({
+          config: {
+            mode: 'port',
+            host: '127.0.0.1',
+            port: server.port,
+            protocol: 'tcp',
+            family: 'auto',
+            tls: true,
+            allowInsecureCert: true,
+            certExpiryWarningDays: 30,
+          },
+          timeoutMs: 5_000,
+        });
+        expect(result.status).toBe('failed');
+        expect(result.errorMessage).toMatch(/certificate for 127\.0\.0\.1:\d+ expires/i);
+        const metrics = result.metrics as Record<string, unknown>;
+        // Metrics are still recorded on the failing run — the handshake worked.
+        expect(metrics.certExpiryWarningDays).toBe(30);
+        expect(metrics.daysUntilExpiry as number).toBeLessThanOrEqual(30);
+      } finally {
+        await server.close();
+      }
+    });
+
+    it('passes a cert whose remaining life is beyond the warning window', async () => {
+      const server = await startTlsServer(longCert, longKey); // ~200 days left
+      try {
+        const result = await executePort({
+          config: {
+            mode: 'port',
+            host: '127.0.0.1',
+            port: server.port,
+            protocol: 'tcp',
+            family: 'auto',
+            tls: true,
+            allowInsecureCert: true,
+            certExpiryWarningDays: 30,
+          },
+          timeoutMs: 5_000,
+        });
+        expect(result.status).toBe('passed');
+        expect(result.errorMessage).toBeNull();
+        expect((result.metrics as Record<string, unknown>).daysUntilExpiry as number).toBeGreaterThan(30);
       } finally {
         await server.close();
       }
@@ -283,6 +355,7 @@ describe('port executor', () => {
           family: 'auto',
           tls: true,
           allowInsecureCert: true,
+          certExpiryWarningDays: 0,
         },
         timeoutMs: 5_000,
       });

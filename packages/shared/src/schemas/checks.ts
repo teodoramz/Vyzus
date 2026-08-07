@@ -73,6 +73,15 @@ export const portModeConfigSchema = z
     // still reported in metrics, just not enforced. For a deliberately
     // self-signed internal service, not for "I'll fix it later."
     allowInsecureCert: z.boolean().default(false),
+    // Fail the check while the certificate is still valid but within this many
+    // days of expiring, so a renewal has a window to happen in. 0 disables it,
+    // which is the default — otherwise enabling this feature would retroactively
+    // change the verdict of every existing TLS check.
+    //
+    // Without it a certificate only fails once it has *already* expired, which
+    // is precisely too late. Applies whether or not allowInsecureCert is set: a
+    // self-signed certificate expires just like a public one.
+    certExpiryWarningDays: z.number().int().min(0).max(365).default(0),
   })
   .strict();
 export type PortModeConfig = z.infer<typeof portModeConfigSchema>;

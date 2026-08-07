@@ -36,7 +36,16 @@ function defaultHttpConfig(): HttpModeConfig {
   };
 }
 function defaultPortConfig(): PortModeConfig {
-  return { mode: 'port', host: '', port: 443, protocol: 'tcp', family: 'auto', tls: true, allowInsecureCert: false };
+  return {
+    mode: 'port',
+    host: '',
+    port: 443,
+    protocol: 'tcp',
+    family: 'auto',
+    tls: true,
+    allowInsecureCert: false,
+    certExpiryWarningDays: 0,
+  };
 }
 function defaultJourneyConfig(): JourneyConfig {
   return { specSource: DEFAULT_JOURNEY_SPEC };
