@@ -48,5 +48,13 @@ updates:
       base-images:
         patterns: ['*']
     ignore:
-      # See playwright note above — the worker image tag is version-locked.
+      # The Playwright image tag is pinned to the `playwright` npm version and
+      # enforced by the playwright-lockstep CI job. Dependabot's docker
+      # ecosystem cannot see that npm pin, so it proposes an image bump on its
+      # own — which always fails lockstep. Bump both together by hand instead.
       - dependency-name: mcr.microsoft.com/playwright
+      # Node majors only. 24 is LTS; 25 is not, and it also unbundled corepack,
+      # so `corepack enable` in the Dockerfiles exits 127 on it. Patch and minor
+      # bumps of the 24 line still come through.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']

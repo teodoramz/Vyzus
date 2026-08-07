@@ -11,7 +11,7 @@ COPY apps/dashboard apps/dashboard
 COPY tsconfig.base.json ./
 RUN pnpm --filter @vyzus/shared build && pnpm --filter @vyzus/dashboard build
 
-FROM nginx:1.27-alpine
+FROM nginx:1.31-alpine
 # vyzus-common.conf is included from inside a server block, so it must NOT sit
 # in conf.d/ — nginx loads everything there at http level and would reject it.
 COPY infra/nginx-common.conf /etc/nginx/vyzus-common.conf
