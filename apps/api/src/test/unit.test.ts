@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
+import { loadConfig } from '../config.js';
 import type { CheckRow } from '../db/schema.js';
 
 /** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
@@ -100,6 +101,34 @@ describe('deriveAppStatus', () => {
 });
 
 const KEY = '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff';
+
+describe('loadConfig — isSecureOrigin', () => {
+  const base = {
+    DATABASE_URL: 'postgres://x/y',
+    REDIS_URL: 'redis://x',
+    JWT_SECRET: 'a'.repeat(32),
+    ENCRYPTION_KEY: KEY,
+  };
+
+  it('is false over plain HTTP, so the refresh cookie is not marked Secure', () => {
+    expect(loadConfig({ ...base, PUBLIC_URL: 'http://vyzus.internal:8080' }).isSecureOrigin).toBe(false);
+  });
+
+  it('is true over HTTPS regardless of port', () => {
+    expect(loadConfig({ ...base, PUBLIC_URL: 'https://vyzus.internal:8443' }).isSecureOrigin).toBe(true);
+  });
+
+  // The old behaviour keyed this off NODE_ENV, which marked the cookie Secure
+  // on plain-HTTP production deployments — where browsers discard it.
+  it('ignores NODE_ENV', () => {
+    expect(loadConfig({ ...base, NODE_ENV: 'production', PUBLIC_URL: 'http://vyzus.internal' }).isSecureOrigin).toBe(
+      false,
+    );
+    expect(loadConfig({ ...base, NODE_ENV: 'development', PUBLIC_URL: 'https://vyzus.internal' }).isSecureOrigin).toBe(
+      true,
+    );
+  });
+});
 
 describe('AES-256-GCM helper', () => {
   it('round-trips a value', () => {

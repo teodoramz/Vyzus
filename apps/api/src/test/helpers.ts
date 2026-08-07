@@ -14,7 +14,7 @@ import { TEST_DATABASE_URL, TEST_REDIS_URL } from './env.js';
 export const ADMIN_EMAIL = 'admin@example.com';
 export const ADMIN_PASSWORD = 'admin-dev-password-1';
 
-export function makeTestConfig(): AppConfig {
+export function makeTestConfig(overrides: NodeJS.ProcessEnv = {}): AppConfig {
   return loadConfig({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL,
@@ -22,6 +22,7 @@ export function makeTestConfig(): AppConfig {
     JWT_SECRET: 'test-jwt-secret-0123456789abcdef',
     ENCRYPTION_KEY: '00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
     PUBLIC_URL: 'http://localhost:8080',
+    ...overrides,
   });
 }
 
@@ -72,8 +73,8 @@ export interface TestContext {
   config: AppConfig;
 }
 
-export async function buildTestApp(): Promise<TestContext> {
-  const config = makeTestConfig();
+export async function buildTestApp(envOverrides: NodeJS.ProcessEnv = {}): Promise<TestContext> {
+  const config = makeTestConfig(envOverrides);
   const dbHandle = createDb(config.DATABASE_URL, { max: 5 });
   const redis = new Redis(config.REDIS_URL, { maxRetriesPerRequest: null, lazyConnect: false });
   const scheduler = new MockScheduler();

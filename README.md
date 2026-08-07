@@ -70,6 +70,7 @@ response-time metrics, screenshots, incident history and alerting.
 │   └── sync-targets.mjs       # Provision apps/checks from targets/ via the API
 ├── targets/                   # Optional: apps/checks as files (targets/README.md)
 ├── docker-compose.yml
+├── docker-compose.tls.yml     # Opt-in HTTPS override
 └── .env.example
 ```
 
@@ -94,6 +95,22 @@ is permanently closed afterwards.
 
 Enroll an application in the dashboard (it gets a default uptime check) and the
 first run appears live within its interval.
+
+### Serving over HTTPS
+
+Drop a certificate and key at `infra/certs/fullchain.pem` and
+`infra/certs/privkey.pem`, set `PUBLIC_URL` to the `https://` address, and add the
+TLS override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
+# 443 serves the app; 80 redirects to it
+```
+
+`infra/certs/` is gitignored. Without the override nothing changes — plain HTTP on
+`8080` still works for local development. Full walkthrough, including Let's Encrypt
+and self-signed pairs, in
+[`docs/05-infrastructure.md`](docs/05-infrastructure.md#https).
 
 ### Demo data
 

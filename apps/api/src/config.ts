@@ -17,7 +17,7 @@ const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().default(7),
 });
 
-export type AppConfig = z.infer<typeof envSchema> & { isProduction: boolean };
+export type AppConfig = z.infer<typeof envSchema> & { isSecureOrigin: boolean };
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   const parsed = envSchema.safeParse(env);
@@ -25,5 +25,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     const issues = parsed.error.issues.map((i) => `  ${i.path.join('.') || '(root)'}: ${i.message}`).join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
-  return { ...parsed.data, isProduction: parsed.data.NODE_ENV === 'production' };
+  return {
+    ...parsed.data,
+    // Whether the browser reaches us over TLS, which is what decides if a
+    // `Secure` cookie can survive — not whether NODE_ENV says production.
+    // Keying it off NODE_ENV marked the refresh cookie Secure on every
+    // production deployment, including plain-HTTP ones, where browsers drop
+    // it outright (localhost being the exception that hid this).
+    isSecureOrigin: new URL(parsed.data.PUBLIC_URL).protocol === 'https:',
+  };
 }

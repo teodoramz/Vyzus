@@ -121,6 +121,32 @@ describe('auth', () => {
     expect(res.refreshCookie).toBeTruthy();
   });
 
+  // The refresh cookie's Secure flag follows PUBLIC_URL's scheme, not NODE_ENV.
+  // Marking it Secure on a plain-HTTP deployment makes the browser discard it,
+  // which silently breaks session refresh.
+  it.each([
+    ['https://vyzus.example.com', true],
+    ['http://vyzus.example.com:8080', false],
+  ])('sets Secure=%s on the refresh cookie for PUBLIC_URL %s', async (publicUrl, expectSecure) => {
+    const scoped = await buildTestApp({ PUBLIC_URL: publicUrl });
+    try {
+      const res = await scoped.app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
+      });
+      expect(res.statusCode).toBe(200);
+      const cookie = res.cookies.find((c) => c.name === 'refreshToken');
+      expect(cookie).toBeDefined();
+      expect(Boolean(cookie?.secure)).toBe(expectSecure);
+      // Unconditional hardening, asserted here so it cannot regress unnoticed.
+      expect(cookie?.httpOnly).toBe(true);
+      expect(cookie?.sameSite).toBe('Strict');
+    } finally {
+      await closeTestApp(scoped);
+    }
+  });
+
   it('rejects a wrong password with 401', async () => {
     const res = await ctx.app.inject({
       method: 'POST',

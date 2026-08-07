@@ -12,6 +12,10 @@ COPY tsconfig.base.json ./
 RUN pnpm --filter @vyzus/shared build && pnpm --filter @vyzus/dashboard build
 
 FROM nginx:1.27-alpine
+# vyzus-common.conf is included from inside a server block, so it must NOT sit
+# in conf.d/ — nginx loads everything there at http level and would reject it.
+COPY infra/nginx-common.conf /etc/nginx/vyzus-common.conf
+COPY infra/nginx-hsts-map.conf /etc/nginx/conf.d/00-hsts.conf
 COPY infra/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/dashboard/dist /usr/share/nginx/html
-EXPOSE 80
+EXPOSE 80 443

@@ -34,8 +34,86 @@ layer. **The worker image tag must match the `playwright` version in
   distributes jobs automatically, no extra config.
 - api: runs as `node` user, migrations run on process start before listening
   (drizzle `migrate()` — safe because concurrent API replicas aren't used in v1).
-- Only nginx publishes a host port; put a TLS terminator (Caddy/Traefik/cloud LB) in
-  front for production and set `PUBLIC_URL` accordingly.
+- Only nginx publishes a host port. It can terminate TLS itself (see below), or you
+  can leave it on HTTP behind an external terminator (Caddy/Traefik/cloud LB) — either
+  way set `PUBLIC_URL` to the address browsers actually use.
+
+## HTTPS
+
+The default stack serves plain HTTP on `${DASHBOARD_PORT:-8080}`, which is fine for
+local development. Anything reachable by other people should be served over TLS: the
+platform handles login credentials on `/auth/login` and `/auth/setup`, and issues a
+refresh cookie.
+
+TLS is opt-in through a compose override, so the default path stays exactly as it is
+and a missing certificate can never break a development stack.
+
+### 1. Put the certificate and key in place
+
+```
+infra/certs/fullchain.pem    certificate followed by any intermediates
+infra/certs/privkey.pem      the matching private key, PEM, not passphrase-protected
+```
+
+`infra/certs/` is gitignored, so a real key cannot be committed by accident.
+
+**From Let's Encrypt** (certbot writes exactly these two filenames):
+
+```bash
+mkdir -p infra/certs
+cp /etc/letsencrypt/live/<domain>/fullchain.pem infra/certs/
+cp /etc/letsencrypt/live/<domain>/privkey.pem   infra/certs/
+```
+
+Renewal replaces the files on the host; nginx keeps the old ones in memory until it
+reloads, so add `docker compose exec dashboard nginx -s reload` to your renewal hook
+(or just restart the dashboard service).
+
+**Self-signed, for testing only** — browsers will warn, which is expected:
+
+```bash
+mkdir -p infra/certs
+openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+  -keyout infra/certs/privkey.pem -out infra/certs/fullchain.pem \
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+```
+
+### 2. Point `PUBLIC_URL` at the https address
+
+```
+PUBLIC_URL=https://vyzus.example.com
+```
+
+This is not cosmetic. `PUBLIC_URL`'s scheme decides whether the refresh cookie is
+marked `Secure` (`isSecureOrigin` in `apps/api/src/config.ts`), and it is embedded in
+the links inside alert payloads. Leaving it on `http://` while serving HTTPS means
+alert links point at the redirect and the cookie is not marked `Secure`.
+
+`HTTP_PORT` and `HTTPS_PORT` default to 80 and 443 and only need setting if those are
+taken. A non-443 HTTPS port also needs the `return 301` line in `infra/nginx-tls.conf`
+adjusted, since a redirect cannot discover the published port on its own.
+
+### 3. Bring the stack up with the override
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
+```
+
+Port 80 now answers only with a 301 to HTTPS; 443 serves the dashboard, the API and
+the WebSocket. To go back to plain HTTP, drop the `-f docker-compose.tls.yml`.
+
+### What the override changes
+
+| | Default | With `docker-compose.tls.yml` |
+|---|---|---|
+| Published ports | `8080:80` | `80:80`, `443:443` |
+| nginx config | `infra/nginx.conf` | `infra/nginx-tls.conf` |
+| Certificates | none | `infra/certs/` mounted read-only |
+| HSTS header | not sent | `max-age=31536000; includeSubDomains` |
+
+Both configs `include` `infra/nginx-common.conf` for the actual routing, so the HTTP
+and HTTPS server blocks cannot drift apart. TLS settings are 1.2/1.3 only, ECDHE +
+AEAD ciphers, session tickets off, client cipher preference.
 
 ## Environment variables (`.env`)
 See `.env.example`. Notable:
@@ -44,7 +122,9 @@ See `.env.example`. Notable:
   created through the dashboard's first-boot setup screen (`POST /auth/setup`),
   which is gated on the users table being empty and is permanently rejected
   (409) once any user exists.
-- `PUBLIC_URL` — used to build screenshot/run links inside alert payloads.
+- `PUBLIC_URL` — builds screenshot/run links inside alert payloads, and its scheme
+  decides whether the refresh cookie carries `Secure`. Must match how browsers
+  actually reach the dashboard.
 - `WORKER_CONCURRENCY` — parallel browser contexts per worker (4 ≈ ~1.5 GB RSS).
 
 ## Capacity planning

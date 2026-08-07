@@ -20,7 +20,7 @@ const REFRESH_COOKIE = 'refreshToken';
 const COOKIE_PATH = '/api/v1/auth';
 
 function setRefreshCookie(
-  app: { config: { isProduction: boolean } },
+  app: { config: { isSecureOrigin: boolean } },
   reply: FastifyReply,
   token: string,
   maxAge: number,
@@ -28,7 +28,9 @@ function setRefreshCookie(
   reply.setCookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     sameSite: 'strict',
-    secure: app.config.isProduction,
+    // Tied to PUBLIC_URL's scheme: a Secure cookie set over plain HTTP is
+    // discarded by the browser, which would silently break session refresh.
+    secure: app.config.isSecureOrigin,
     path: COOKIE_PATH,
     maxAge,
   });

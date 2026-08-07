@@ -1,0 +1,21 @@
+# Opt-in TLS. Layer this over the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
+#
+# Requires infra/certs/fullchain.pem and infra/certs/privkey.pem, and
+# PUBLIC_URL in .env set to the https:// address (it is embedded in alert
+# links and decides whether the refresh cookie is marked Secure).
+#
+# See docs/05-infrastructure.md for how to obtain the pair.
+
+services:
+  dashboard:
+    # !override replaces the base port list instead of appending to it —
+    # otherwise the plain-HTTP 8080 entrance would survive alongside 443 and
+    # redirect to a URL with the wrong port.
+    ports: !override
+      - '${HTTP_PORT:-80}:80'
+      - '${HTTPS_PORT:-443}:443'
+    volumes:
+      - ./infra/certs:/etc/nginx/certs:ro
+      - ./infra/nginx-tls.conf:/etc/nginx/conf.d/default.conf:ro

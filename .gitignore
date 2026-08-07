@@ -6,6 +6,9 @@ dist/
 artifacts/
 coverage/
 
+# TLS material supplied by the operator — never commit a private key
+infra/certs/
+
 # Local agent tooling
 CLAUDE.md
 .claude/
