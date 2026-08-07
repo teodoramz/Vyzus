@@ -90,6 +90,19 @@
     disabled, or a threshold of 0, never triggers it.
   - The switch runs in the API process, not the worker — a switch hosted by the
     process it watches dies with it.
+- FR-1.5 **Session login**: an application may carry a form-based login (URL, field
+  selectors, credentials, optional signed-in proof selector) inside `authConfig`, which
+  is already encrypted at rest as `applications.auth_config_enc` (AES-256-GCM).
+  - The worker drives the real form in the same browser context before the check runs,
+    so the session cookie it establishes carries into the check — no storage state is
+    serialised and nothing secret is written to disk.
+  - Without it, any target behind a normal login renders as the login page to the
+    checker and the screenshot captures nothing useful.
+  - A failed login ends the run with its own message rather than falling through to
+    fail the check's assertions against the login page, which would report something
+    misleading. Credentials never appear in error messages or metrics.
+  - The login is given at most half the check timeout, so a hanging login cannot
+    consume the whole budget.
 - FR-2.3 **Journey check**:
   - The test body is a Playwright TypeScript snippet uploaded or pasted/edited in the dashboard (Monaco editor). Users record it locally with `npx playwright codegen <url>`.
   - The platform wraps the snippet in its own runner harness (see 02-architecture §5.2); the snippet exports steps using the standard `page` API.

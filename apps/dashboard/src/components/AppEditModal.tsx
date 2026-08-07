@@ -18,6 +18,16 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
   const [useAuth, setUseAuth] = useState(app.hasAuthConfig);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // Form-based login for targets behind a normal session. Kept separate from
+  // basic auth: they are different mechanisms and a target may need either.
+  const [useLogin, setUseLogin] = useState(false);
+  const [loginUrl, setLoginUrl] = useState(app.landingUrl);
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [usernameSelector, setUsernameSelector] = useState('#username');
+  const [passwordSelector, setPasswordSelector] = useState('#password');
+  const [submitSelector, setSubmitSelector] = useState('button[type="submit"]');
+  const [successSelector, setSuccessSelector] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const update = useMutation({
@@ -30,7 +40,7 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
           .map((t) => t.trim())
           .filter(Boolean),
         enabled,
-        authConfig: useAuth ? (username || password ? { basicAuth: { username, password } } : undefined) : null,
+        authConfig: buildAuthConfig(),
       }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['app', app.id] });
@@ -48,6 +58,29 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : 'Failed to delete'),
   });
+
+  // `undefined` means "leave the stored credentials alone"; `null` clears them.
+  function buildAuthConfig() {
+    const basicAuth = useAuth && (username || password) ? { basicAuth: { username, password } } : undefined;
+    const sessionLogin =
+      useLogin && loginUrl && loginUser && loginPassword
+        ? {
+            sessionLogin: {
+              loginUrl,
+              username: loginUser,
+              password: loginPassword,
+              usernameSelector,
+              passwordSelector,
+              submitSelector,
+              ...(successSelector ? { successSelector } : {}),
+            },
+          }
+        : undefined;
+
+    if (!useAuth && !useLogin) return null;
+    if (!basicAuth && !sessionLogin) return undefined;
+    return { ...(basicAuth ?? {}), ...(sessionLogin ?? {}) };
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -117,6 +150,69 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
               />
               <p className="col-span-2 text-xs text-slate-400 dark:text-zinc-500">
                 Stored encrypted. Leave blank to keep the existing credentials.
+              </p>
+            </div>
+          )}
+
+          <label className="mt-4 flex items-center gap-2 text-sm font-medium">
+            <input type="checkbox" checked={useLogin} onChange={(e) => setUseLogin(e.target.checked)} />
+            Sign in through a login form
+          </label>
+          {useLogin && (
+            <div className="mt-2 space-y-2">
+              <p className="text-xs text-slate-400 dark:text-zinc-500">
+                Vyzus fills and submits the form in a real browser before running the check, so the session it
+                establishes is used for the check itself. Without this, a target behind a login renders as the login
+                page and the screenshot shows nothing useful. Stored encrypted, like the credentials above.
+              </p>
+              <input
+                placeholder="Login page URL"
+                value={loginUrl}
+                onChange={(e) => setLoginUrl(e.target.value)}
+                className={inputClass}
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  placeholder="Username"
+                  value={loginUser}
+                  onChange={(e) => setLoginUser(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  placeholder="Password"
+                  type="password"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  placeholder="Username field selector"
+                  value={usernameSelector}
+                  onChange={(e) => setUsernameSelector(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  placeholder="Password field selector"
+                  value={passwordSelector}
+                  onChange={(e) => setPasswordSelector(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  placeholder="Submit button selector"
+                  value={submitSelector}
+                  onChange={(e) => setSubmitSelector(e.target.value)}
+                  className={inputClass}
+                />
+                <input
+                  placeholder="Signed-in proof selector (optional)"
+                  value={successSelector}
+                  onChange={(e) => setSuccessSelector(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <p className="text-xs text-slate-400 dark:text-zinc-500">
+                The proof selector is worth setting: without it a wrong password fails later, on the check's own
+                assertions, with a message pointing at the wrong thing.
               </p>
             </div>
           )}

@@ -35,6 +35,9 @@ response-time metrics, screenshots, incident history and alerting.
 - **On-demand screenshot** — one click captures the landing page *right now*.
 - **Alerting** — Slack/Discord webhooks + generic JSON webhooks on down/recovery,
   with a configurable consecutive-failure threshold.
+- **Session login** — for targets behind a normal login form: Vyzus signs in with a
+  real browser first, so the check runs against the authenticated page rather than the
+  login screen. Credentials are encrypted at rest.
 - **Visual regression** — optionally fail a check when the page changes by more than
   a set percentage of pixels, catching defacement and blank-page deploys that still
   return HTTP 200.

@@ -6,9 +6,39 @@ import { checkWithAvailabilitySchema, runStatusSchema, checkTypeSchema } from '.
 export const appStatusSchema = z.enum(APP_STATUSES);
 
 /** Optional per-app credentials, encrypted at rest as auth_config_enc. */
+/**
+ * Form-based login for targets behind a normal session.
+ *
+ * Uptime checks support HTTP basic auth and custom headers, but a target behind
+ * a login form renders as a login page (or an empty shell) to the checker, and
+ * the screenshot captures nothing useful. This drives the real form in the same
+ * browser context, so the session cookie it sets is carried into the check
+ * itself — no storage-state serialisation needed.
+ *
+ * Lives inside `authConfig`, which is already encrypted at rest as
+ * `applications.auth_config_enc` (AES-256-GCM), so the password reuses that
+ * path rather than introducing a second secret store.
+ */
+export const sessionLoginSchema = z.object({
+  loginUrl: z.string().url().max(2000),
+  usernameSelector: z.string().min(1).max(500),
+  passwordSelector: z.string().min(1).max(500),
+  submitSelector: z.string().min(1).max(500),
+  username: z.string().min(1).max(500),
+  password: z.string().min(1).max(500),
+  /**
+   * Optional proof the login actually worked. Without it a failed login is
+   * indistinguishable from a successful one until the check's own assertions
+   * fail on the login page — with a confusing message.
+   */
+  successSelector: z.string().min(1).max(500).optional(),
+});
+export type SessionLogin = z.infer<typeof sessionLoginSchema>;
+
 export const appAuthConfigSchema = z.object({
   basicAuth: z.object({ username: z.string(), password: z.string() }).optional(),
   headers: z.record(z.string()).optional(),
+  sessionLogin: sessionLoginSchema.optional(),
 });
 export type AppAuthConfig = z.infer<typeof appAuthConfigSchema>;
 

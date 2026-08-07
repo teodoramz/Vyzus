@@ -37,6 +37,44 @@ export async function startTestSite(): Promise<TestSite> {
       // Never responds — navigation timeout path.
       return;
     }
+    // A genuinely session-protected area: /secret is only served with a
+    // session cookie, so a checker that cannot log in sees the login page.
+    if (req.url === '/login') {
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(
+        '<html><head><title>Sign in</title></head><body>' +
+          '<form method="post" action="/session">' +
+          '<input id="u" name="u"><input id="p" name="p" type="password">' +
+          '<button id="go" type="submit">Sign in</button>' +
+          '</form></body></html>',
+      );
+      return;
+    }
+    if (req.url === '/session' && req.method === 'POST') {
+      let body = '';
+      req.on('data', (c) => (body += c));
+      req.on('end', () => {
+        const params = new URLSearchParams(body);
+        if (params.get('u') === 'demo' && params.get('p') === 'hunter2') {
+          res.writeHead(302, { 'set-cookie': 'sid=ok; Path=/', location: '/secret' });
+          res.end();
+        } else {
+          res.writeHead(302, { location: '/login' });
+          res.end();
+        }
+      });
+      return;
+    }
+    if (req.url === '/secret') {
+      const authed = (req.headers.cookie ?? '').includes('sid=ok');
+      res.writeHead(200, { 'content-type': 'text/html' });
+      res.end(
+        authed
+          ? '<html><head><title>Dashboard</title></head><body><h1 id="welcome">Signed in</h1></body></html>'
+          : '<html><head><title>Sign in</title></head><body><h1 id="denied">Please sign in</h1></body></html>',
+      );
+      return;
+    }
     if (req.url === '/lag') {
       // Responds, but only after a beat — the latency-threshold path, which
       // needs a run that genuinely passes every assertion yet is slow.

@@ -1,6 +1,6 @@
 // Uptime executor (02-architecture §5.1).
 import { errors as playwrightErrors, type BrowserContextOptions, type Page } from 'playwright';
-import type { AppAuthConfig, HttpModeConfig } from '@vyzus/shared';
+import type { AppAuthConfig, HttpModeConfig, SessionLogin } from '@vyzus/shared';
 import { getBrowser } from '../browser.js';
 import { newStealthContext } from '../browser-context.js';
 import type { ArtifactStore } from '../artifacts.js';
@@ -61,6 +61,50 @@ async function collectTimings(page: Page): Promise<NavTimings | null> {
   }
 }
 
+/**
+ * Drive a login form. Returns null on success, or an error message.
+ *
+ * Deliberately generic (three selectors + an optional proof) rather than
+ * modelling any particular framework's login: the operator already knows their
+ * own form, and a selector they can copy from devtools beats a scheme we guess.
+ *
+ * Secrets are typed into the page and never logged: the returned message
+ * mentions selectors and URLs only.
+ */
+async function performSessionLogin(page: Page, login: SessionLogin, timeoutMs: number): Promise<string | null> {
+  // A share of the total budget, so a hanging login cannot consume the whole
+  // check timeout and leave nothing for the target itself.
+  const budget = Math.max(5_000, Math.floor(timeoutMs / 2));
+  try {
+    await page.goto(login.loginUrl, { waitUntil: 'domcontentloaded', timeout: budget });
+    await page.locator(login.usernameSelector).first().fill(login.username, { timeout: budget });
+    await page.locator(login.passwordSelector).first().fill(login.password, { timeout: budget });
+
+    // The submit usually navigates; waiting for the click and any resulting
+    // load together avoids racing the redirect.
+    await Promise.all([
+      page.waitForLoadState('domcontentloaded', { timeout: budget }).catch(() => undefined),
+      page.locator(login.submitSelector).first().click({ timeout: budget }),
+    ]);
+
+    if (login.successSelector) {
+      const ok = await page
+        .locator(login.successSelector)
+        .first()
+        .waitFor({ state: 'visible', timeout: budget })
+        .then(() => true)
+        .catch(() => false);
+      if (!ok) {
+        return `Session login did not complete: "${login.successSelector}" never appeared after submitting ${login.loginUrl}`;
+      }
+    }
+    return null;
+  } catch (err) {
+    const detail = err instanceof playwrightErrors.TimeoutError ? `timed out after ${budget} ms` : String(err);
+    return truncateError(`Session login against ${login.loginUrl} failed — ${detail}`);
+  }
+}
+
 export async function executeUptime(
   input: UptimeInput,
   artifacts?: { store: ArtifactStore; target: ArtifactTarget },
@@ -82,6 +126,27 @@ export async function executeUptime(
   let metrics: Record<string, unknown> | null = null;
 
   try {
+    // Session login, before the target is touched. Same browser context, so
+    // the session cookie the form sets is carried straight into the check —
+    // no storage-state serialisation, and nothing secret written to disk.
+    //
+    // A login failure ends the run here with its own message: letting it fall
+    // through would fail the check's real assertions against a login page and
+    // report something misleading like "selector not visible".
+    if (authConfig?.sessionLogin) {
+      const loginError = await performSessionLogin(page, authConfig.sessionLogin, timeoutMs);
+      if (loginError) {
+        return {
+          status: 'failed',
+          durationMs: Date.now() - startedAt,
+          metrics: { sessionLogin: 'failed' },
+          errorMessage: loginError,
+          screenshotPath: null,
+          tracePath: null,
+        };
+      }
+    }
+
     let httpStatus: number | null = null;
     try {
       // `domcontentloaded`, not `load`: the HTTP status (the thing the check
