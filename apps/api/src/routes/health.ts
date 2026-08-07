@@ -14,13 +14,13 @@ export const healthRoutes: FastifyPluginAsyncZod = async (app) => {
         await app.db.execute(sql`select 1`);
         db = true;
       } catch {
-        db = false;
+        // leave `db` false — the initializer is the failure value
       }
       try {
         const pong = await app.redis.ping();
         redis = pong === 'PONG';
       } catch {
-        redis = false;
+        // leave `redis` false
       }
       const ok = db && redis;
       return reply.status(ok ? 200 : 503).send({
