@@ -1,11 +1,13 @@
 name: CI
 
-# Runs where the answer changes a decision: on a pull request, before merging,
-# and on demand. Not on every push to main — that re-verified a commit CI had
-# already checked as a PR, at the cost of a full Chromium run each time.
+# Pull requests, every push to main, and on demand. Push-to-main is here so a
+# commit that never went through a PR still gets a verdict — without it there
+# is no way to tell whether main is healthy short of opening a PR.
 # Releases are covered separately: release.yml re-verifies the tagged commit
 # from scratch before publishing anything.
 on:
+  push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -38,6 +40,9 @@ jobs:
             base="origin/${{ github.base_ref }}"
             git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
             files=$(git diff --name-only "$base"...HEAD)
+          elif [ "${{ github.event_name }}" = "push" ]; then
+            # First commit on a branch has no parent to diff against.
+            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
           else
             # A manual run is an explicit "check everything" — no filtering.
             echo "manual run: forcing every job"

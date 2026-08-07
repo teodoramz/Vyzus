@@ -1,9 +1,11 @@
 name: Security
 
-# Same policy as ci.yml: pull requests and on demand, not every push to main.
-# The weekly schedule stays — it is the one that catches a CVE published against
-# a dependency that has not changed, which no code-triggered run would find.
+# Same policy as ci.yml. Push-to-main is included so every commit gets a
+# verdict you can actually look at; the weekly schedule stays because it is the
+# one that catches a CVE published against a dependency nobody touched.
 on:
+  push:
+    branches: [main]
   pull_request:
   schedule:
     - cron: '17 6 * * 1' # weekly, Monday 06:17 UTC
@@ -35,10 +37,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      # Deliberately no `cache: pnpm` here: this job reads the lockfile and
+      # never installs, so there is no pnpm store on disk. setup-node's
+      # post-job cache-save then fails with "Path(s) specified in the action
+      # for caching do(es) not exist", failing a job whose audit had passed.
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: pnpm
       # Fails on known vulnerabilities of high/critical severity anywhere in the
       # lockfile. Moderate findings are reported in the log but don't block.
       #
@@ -101,7 +106,7 @@ jobs:
       - name: Build ${{ matrix.image }} image
         run: docker build -f infra/${{ matrix.image }}.Dockerfile -t vyzus-${{ matrix.image }}:scan .
       - name: Trivy scan (OS packages + bundled node deps)
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: vyzus-${{ matrix.image }}:scan
           format: sarif
@@ -109,7 +114,11 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
       - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Dependabot-triggered runs get a read-only GITHUB_TOKEN regardless of
+        # the `permissions:` above, so uploading to code scanning is refused
+        # ("Resource not accessible by integration") and fails the job. The scan
+        # itself still runs on those PRs — only the upload is skipped.
+        if: always() && github.actor != 'dependabot[bot]'
         with:
           sarif_file: trivy-${{ matrix.image }}.sarif
           category: trivy-${{ matrix.image }}
@@ -127,7 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy filesystem + misconfiguration scan
-        uses: aquasecurity/trivy-action@v0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scanners: vuln,misconfig,secret
@@ -136,7 +145,11 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
       - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        # Dependabot-triggered runs get a read-only GITHUB_TOKEN regardless of
+        # the `permissions:` above, so uploading to code scanning is refused
+        # ("Resource not accessible by integration") and fails the job. The scan
+        # itself still runs on those PRs — only the upload is skipped.
+        if: always() && github.actor != 'dependabot[bot]'
         with:
           sarif_file: trivy-repo.sarif
           category: trivy-repo
