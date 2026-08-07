@@ -151,6 +151,8 @@ export interface RetentionWorkerOptions {
   db: Database;
   artifactsDir: string;
   log: FastifyBaseLogger;
+  /** Invoked for `{ task: 'heartbeat' }` — the dead-man's switch pass. */
+  onHeartbeat: () => Promise<void>;
 }
 
 /** Consume the `maintenance` queue in-process. */
@@ -164,7 +166,8 @@ export function startRetentionWorker(options: RetentionWorkerOptions): Worker {
         log.error({ jobId: job.id, data: job.data }, 'malformed maintenance job — dropping');
         return;
       }
-      await runRetention(db, artifactsDir, log);
+      if (parsed.data.task === 'retention') await runRetention(db, artifactsDir, log);
+      else await options.onHeartbeat();
     },
     { connection: connection.duplicate({ maxRetriesPerRequest: null }), concurrency: 1 },
   );

@@ -52,7 +52,10 @@ export const DEFAULT_SCREENSHOT_REFRESH_MINUTES = 60;
 export const CHANNEL_TYPES = ['slack', 'discord', 'webhook'] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
-export const ALERT_EVENTS = ['down', 'recovered'] as const;
+// `down`/`recovered` describe a single check's incident. `stalled`/`resumed`
+// are platform-level: the monitoring itself stopped producing runs, which no
+// per-check alert can express because a dead worker fires no checks at all.
+export const ALERT_EVENTS = ['down', 'recovered', 'stalled', 'resumed'] as const;
 export type AlertEvent = (typeof ALERT_EVENTS)[number];
 
 export const DELIVERY_STATUSES = ['sent', 'failed'] as const;
@@ -75,7 +78,31 @@ export const SETTINGS_KEYS = {
   runsDays: 'retention.runs_days',
   screenshotsDays: 'retention.screenshots_days',
   tracesDays: 'retention.traces_days',
+  heartbeatStallMinutes: 'heartbeat.stall_minutes',
 } as const;
+
+/**
+ * Dead-man's switch. If the worker dies, checks simply stop running: no alert
+ * fires and the dashboard keeps showing the last known status forever, so
+ * silence looks exactly like "everything is fine". This is the threshold for
+ * calling platform-wide silence a fault.
+ *
+ * 0 disables it. The default is deliberately on — a monitoring tool that
+ * cannot notice its own death is the one failure that invalidates every other
+ * signal it produces.
+ */
+export const DEFAULT_HEARTBEAT_STALL_MINUTES = 15;
+
+/**
+ * A stall is only declared once elapsed silence exceeds BOTH the configured
+ * threshold and this multiple of the shortest enabled check interval. Without
+ * the second condition a deployment whose only check runs hourly would alert
+ * every 15 minutes, forever.
+ */
+export const HEARTBEAT_INTERVAL_MULTIPLE = 2;
+
+/** How often the heartbeat evaluates. Cheap: two indexed aggregates. */
+export const HEARTBEAT_EVERY_MS = 60_000;
 
 export const DEFAULT_RETENTION = {
   runsDays: 90,

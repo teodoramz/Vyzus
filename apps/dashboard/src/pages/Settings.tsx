@@ -16,6 +16,7 @@ export function Settings(): JSX.Element {
   const [runsDays, setRunsDays] = useState(90);
   const [screenshotsDays, setScreenshotsDays] = useState(30);
   const [tracesDays, setTracesDays] = useState(14);
+  const [heartbeatStallMinutes, setHeartbeatStallMinutes] = useState(15);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -24,11 +25,12 @@ export function Settings(): JSX.Element {
       setRunsDays(data.runsDays);
       setScreenshotsDays(data.screenshotsDays);
       setTracesDays(data.tracesDays);
+      setHeartbeatStallMinutes(data.heartbeatStallMinutes);
     }
   }, [data]);
 
   const save = useMutation({
-    mutationFn: () => settingsApi.update({ runsDays, screenshotsDays, tracesDays }),
+    mutationFn: () => settingsApi.update({ runsDays, screenshotsDays, tracesDays, heartbeatStallMinutes }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['settings'] });
       setSaved(true);
@@ -107,6 +109,27 @@ export function Settings(): JSX.Element {
               onChange={(e) => setTracesDays(Number(e.target.value))}
               className={inputClass}
             />
+          </div>
+
+          <div>
+            <label htmlFor="heartbeatStallMinutes" className={labelClass}>
+              Alert if nothing runs for (minutes)
+            </label>
+            <input
+              id="heartbeatStallMinutes"
+              type="number"
+              min={0}
+              max={1440}
+              disabled={readOnly}
+              value={heartbeatStallMinutes}
+              onChange={(e) => setHeartbeatStallMinutes(Number(e.target.value))}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+              {heartbeatStallMinutes > 0
+                ? 'If no check completes anywhere in this window, Vyzus alerts that its own monitoring has stopped — the failure a dead worker cannot report itself. Raised automatically to twice your shortest check interval when that is longer. 0 disables it.'
+                : 'Off — if the worker dies, checks stop silently and the dashboard keeps showing the last known status indefinitely.'}
+            </p>
           </div>
 
           {error && (

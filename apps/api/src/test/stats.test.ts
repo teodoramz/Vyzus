@@ -92,6 +92,8 @@ describe('GET /stats', () => {
       openIncidents: 1,
       queueDepth: 3,
       runsLast24h: 2,
+      // Runs are fresh in this fixture, so the dead-man's switch is quiet.
+      monitoringStalledSince: null,
     });
   });
 

@@ -60,6 +60,20 @@ export function Header(): JSX.Element {
 
   return (
     <header className="sticky top-0 z-20 border-b border-gray-200 bg-white/90 backdrop-blur dark:border-white/10 dark:bg-zinc-950/90">
+      {/*
+        Dead-man's switch. When the platform stops producing runs, every number
+        below it is stale — so this sits above them rather than beside them, and
+        says so explicitly. Without it, a dead worker looks like a healthy one.
+      */}
+      {stats?.monitoringStalledSince && (
+        <div
+          role="alert"
+          className="border-b border-red-500/30 bg-red-500/10 px-4 py-2 text-center text-sm font-medium text-red-700 dark:text-red-300"
+        >
+          Monitoring has stalled — no checks have run since {new Date(stats.monitoringStalledSince).toLocaleString()}.
+          The status shown below is stale; check that the Vyzus worker is running.
+        </div>
+      )}
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
         <NavLink
           to="/"

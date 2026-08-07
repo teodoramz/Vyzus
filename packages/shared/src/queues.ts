@@ -2,7 +2,7 @@
 // Producers (API scheduler / worker) and consumers (worker / API alerter)
 // import these so a job's shape is defined exactly once.
 import { z } from 'zod';
-import { RUN_TRIGGERS, ALERT_EVENTS, CHECK_TYPES } from './constants.js';
+import { RUN_TRIGGERS, CHECK_TYPES } from './constants.js';
 
 export const QUEUE_NAMES = {
   checks: 'checks',
@@ -31,16 +31,34 @@ export const checkJobPayloadSchema = z.object({
 });
 export type CheckJobPayload = z.infer<typeof checkJobPayloadSchema>;
 
-/** `alerts` queue — worker (incident transitions) → API alerter. */
-export const alertJobPayloadSchema = z.object({
+/**
+ * `alerts` queue. Two producers: the worker's incident state machine sends
+ * check alerts (carrying an incidentId), and the API's heartbeat sends
+ * platform alerts, which have no incident because nothing ran to fail.
+ */
+export const checkAlertJobPayloadSchema = z.object({
   incidentId: z.string().uuid(),
-  event: z.enum(ALERT_EVENTS),
+  event: z.enum(['down', 'recovered']),
 });
+
+export const monitoringAlertJobPayloadSchema = z.object({
+  event: z.enum(['stalled', 'resumed']),
+  silentForSeconds: z.number().int().min(0),
+  thresholdMinutes: z.number().int().min(0),
+  lastRunAt: z.string().nullable(),
+});
+
+export const alertJobPayloadSchema = z.union([checkAlertJobPayloadSchema, monitoringAlertJobPayloadSchema]);
+export type CheckAlertJobPayload = z.infer<typeof checkAlertJobPayloadSchema>;
+export type MonitoringAlertJobPayload = z.infer<typeof monitoringAlertJobPayloadSchema>;
 export type AlertJobPayload = z.infer<typeof alertJobPayloadSchema>;
 
-/** `maintenance` queue — API daily repeatable → API. */
+/**
+ * `maintenance` queue — API repeatables → API. `retention` runs daily;
+ * `heartbeat` runs every minute and is the platform's dead-man's switch.
+ */
 export const maintenanceJobPayloadSchema = z.object({
-  task: z.literal('retention'),
+  task: z.enum(['retention', 'heartbeat']),
 });
 export type MaintenanceJobPayload = z.infer<typeof maintenanceJobPayloadSchema>;
 

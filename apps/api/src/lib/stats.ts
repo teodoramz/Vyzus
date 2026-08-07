@@ -8,6 +8,7 @@ import { and, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import type { Database } from '../db/index.js';
 import { applications, checks, incidents, runs } from '../db/schema.js';
 import { deriveAppStatus, WINDOW_MS } from './queries.js';
+import { readStalledSince } from '../services/heartbeat.js';
 
 export interface AppCounts {
   total: number;
@@ -79,6 +80,7 @@ export interface FullStats {
   openIncidents: number;
   queueDepth: number;
   runsLast24h: number;
+  monitoringStalledSince: string | null;
 }
 
 export async function computeStats(
@@ -86,10 +88,13 @@ export async function computeStats(
   queueDepth: number,
   allowedAppIds: string[] | null = null,
 ): Promise<FullStats> {
-  const [counts, openIncidents, runsLast24h] = await Promise.all([
+  const [counts, openIncidents, runsLast24h, monitoringStalledSince] = await Promise.all([
     computeAppCounts(db, allowedAppIds),
     countOpenIncidents(db, allowedAppIds),
     countRunsSince(db, new Date(Date.now() - WINDOW_MS.h24), allowedAppIds),
+    // Platform-wide and deliberately not scoped to allowedAppIds: a stalled
+    // platform is stalled for every viewer, whatever they can see.
+    readStalledSince(db),
   ]);
   return {
     apps: {
@@ -102,5 +107,6 @@ export async function computeStats(
     openIncidents,
     queueDepth,
     runsLast24h,
+    monitoringStalledSince,
   };
 }

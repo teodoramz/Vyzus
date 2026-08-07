@@ -17,6 +17,7 @@ import {
   CHECK_JOB_NAMES,
   checkRepeatableJobId,
   dryRunResultSchema,
+  HEARTBEAT_EVERY_MS,
   type CheckJobPayload,
   type DryRunJobPayload,
   type DryRunResult,
@@ -79,6 +80,7 @@ const JOB_NAME_FOR_TRIGGER: Record<RunTrigger, string> = {
 
 const MAINTENANCE_SCHEDULER_ID = 'maintenance:retention';
 const MAINTENANCE_EVERY_MS = 24 * 60 * 60 * 1000; // daily
+const HEARTBEAT_SCHEDULER_ID = 'maintenance:heartbeat';
 
 export class BullMqSchedulerService implements SchedulerService {
   private readonly queue: Queue;
@@ -99,15 +101,24 @@ export class BullMqSchedulerService implements SchedulerService {
     return Object.values(counts).reduce((sum, n) => sum + (n ?? 0), 0);
   }
 
-  /** Ensure the daily retention repeatable exists on the `maintenance` queue. */
+  /** Ensure the maintenance repeatables exist: daily retention, minute heartbeat. */
   private async registerMaintenance(): Promise<void> {
-    const payload: MaintenanceJobPayload = { task: 'retention' };
+    const retention: MaintenanceJobPayload = { task: 'retention' };
     await this.maintenanceQueue.upsertJobScheduler(
       MAINTENANCE_SCHEDULER_ID,
       { every: MAINTENANCE_EVERY_MS },
-      { name: 'retention', data: payload, opts: { removeOnComplete: true, removeOnFail: true } },
+      { name: 'retention', data: retention, opts: { removeOnComplete: true, removeOnFail: true } },
     );
-    this.log.info('maintenance retention repeatable registered (daily)');
+
+    // The dead-man's switch. Runs in the API, deliberately not the worker —
+    // a switch hosted by the process it is meant to watch would die with it.
+    const heartbeat: MaintenanceJobPayload = { task: 'heartbeat' };
+    await this.maintenanceQueue.upsertJobScheduler(
+      HEARTBEAT_SCHEDULER_ID,
+      { every: HEARTBEAT_EVERY_MS },
+      { name: 'heartbeat', data: heartbeat, opts: { removeOnComplete: true, removeOnFail: true } },
+    );
+    this.log.info('maintenance repeatables registered (retention daily, heartbeat every minute)');
   }
 
   /** Lazily created: QueueEvents holds a blocking Redis connection. */

@@ -9,7 +9,7 @@ The compose file, Dockerfiles, nginx config and `.env.example` at the repo root 
 |---|---|---|---|
 | dashboard | `infra/dashboard.Dockerfile` | node:24-slim → nginx:1.27-alpine | **8080 → 80** (only exposed port) |
 | api | `infra/api.Dockerfile` | node:24-slim | 3000 (internal) |
-| worker | `infra/worker.Dockerfile` | mcr.microsoft.com/playwright:v1.54.0-noble | — |
+| worker | `infra/worker.Dockerfile` | mcr.microsoft.com/playwright:v1.55.1-noble | — |
 | postgres | — | postgres:16-alpine | 5432 (internal) |
 | redis | — | redis:7-alpine | 6379 (internal) |
 
@@ -126,6 +126,19 @@ See `.env.example`. Notable:
   decides whether the refresh cookie carries `Secure`. Must match how browsers
   actually reach the dashboard.
 - `WORKER_CONCURRENCY` — parallel browser contexts per worker (4 ≈ ~1.5 GB RSS).
+
+## Monitoring the monitor
+
+`heartbeat.stall_minutes` (Settings, default 15) is the dead-man's switch. The API
+evaluates it once a minute and alerts if no check has completed platform-wide inside
+the window — the one failure the platform cannot otherwise report, since a dead worker
+produces no failing checks to alert on.
+
+It deliberately lives in the API rather than the worker. If the worker hosted it, the
+switch would die with the process it exists to watch.
+
+It does not cover an API that is itself down. For that, point an external uptime check
+at `GET /api/v1/health` — the standard advice for any self-hosted monitor.
 
 ## Capacity planning
 One worker at concurrency 4 sustains ~30–60 runs/min (browser-bound; uptime checks

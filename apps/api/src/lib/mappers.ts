@@ -13,7 +13,7 @@ import type {
   UptimeConfig,
   JourneyConfig,
 } from '@vyzus/shared';
-import { DEFAULT_RETENTION } from '@vyzus/shared';
+import { DEFAULT_RETENTION, DEFAULT_HEARTBEAT_STALL_MINUTES, SETTINGS_KEYS } from '@vyzus/shared';
 import type { UserRow, CheckRow, ApplicationRow, AlertChannelRow, IncidentRow, RunRow } from '../db/schema.js';
 
 const iso = (d: Date): string => d.toISOString();
@@ -123,5 +123,6 @@ export function toSettings(rows: { key: string; value: unknown }[]): Settings {
     runsDays: num('retention.runs_days', DEFAULT_RETENTION.runsDays),
     screenshotsDays: num('retention.screenshots_days', DEFAULT_RETENTION.screenshotsDays),
     tracesDays: num('retention.traces_days', DEFAULT_RETENTION.tracesDays),
+    heartbeatStallMinutes: num(SETTINGS_KEYS.heartbeatStallMinutes, DEFAULT_HEARTBEAT_STALL_MINUTES),
   };
 }

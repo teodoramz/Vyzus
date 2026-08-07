@@ -14,7 +14,9 @@ import {
   QUEUE_NAMES,
   ALERT_SIGNATURE_HEADER,
   alertJobPayloadSchema,
+  isMonitoringAlert,
   type AlertWebhookPayload,
+  type MonitoringAlertWebhookPayload,
   type AlertEvent,
   type ChannelType,
 } from '@vyzus/shared';
@@ -88,8 +90,72 @@ function humanDowntime(seconds: number | null): string {
   return m < 60 ? `${m}m ${seconds % 60}s` : `${Math.floor(m / 60)}h ${m % 60}m`;
 }
 
+function humanSilence(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const m = Math.floor(seconds / 60);
+  return m < 60 ? `${m}m` : `${Math.floor(m / 60)}h ${m % 60}m`;
+}
+
+/**
+ * Platform-level alert: the monitoring itself stopped producing runs. There is
+ * no application, check or run to link to — that is precisely the problem —
+ * so this renders from the silence measurement alone.
+ */
+function renderMonitoringBody(type: ChannelType, p: MonitoringAlertWebhookPayload, publicUrl: string): unknown {
+  const stalled = p.event === 'monitoring.stalled';
+  const title = stalled
+    ? 'MONITORING STALLED — no checks are running'
+    : 'MONITORING RESUMED — checks are running again';
+  const detail = stalled
+    ? `No check has completed in ${humanSilence(p.monitoring.silentForSeconds)} (threshold ${p.monitoring.thresholdMinutes}m). Vyzus itself may be down — verify the worker.`
+    : `Checks are completing again after ${humanSilence(p.monitoring.silentForSeconds)} of silence.`;
+  const lastRun = p.monitoring.lastRunAt ?? 'never';
+
+  if (type === 'slack') {
+    return {
+      attachments: [
+        {
+          color: stalled ? RED : GREEN,
+          blocks: [
+            { type: 'header', text: { type: 'plain_text', text: title } },
+            { type: 'section', text: { type: 'mrkdwn', text: detail } },
+            {
+              type: 'section',
+              fields: [
+                { type: 'mrkdwn', text: `*Last run:*\n${lastRun}` },
+                { type: 'mrkdwn', text: `*Dashboard:*\n<${publicUrl}|Open Vyzus>` },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (type === 'discord') {
+    return {
+      embeds: [
+        {
+          title,
+          url: publicUrl,
+          color: stalled ? 0xdc2626 : 0x16a34a,
+          fields: [
+            { name: 'Detail', value: detail, inline: false },
+            { name: 'Last run', value: lastRun, inline: true },
+            { name: 'Threshold', value: `${p.monitoring.thresholdMinutes}m`, inline: true },
+          ],
+          timestamp: p.timestamp,
+        },
+      ],
+    };
+  }
+
+  return p;
+}
+
 /** Render the outbound HTTP body for a channel type (04-api-spec). */
 export function renderAlertBody(type: ChannelType, p: AlertWebhookPayload, publicUrl: string): unknown {
+  if (isMonitoringAlert(p)) return renderMonitoringBody(type, p, publicUrl);
   const down = p.event === 'check.down';
   // No emoji in the title: Slack and Discord already colour the attachment /
   // embed from the `color` field below, so a status word carries the same
@@ -224,31 +290,61 @@ export function startAlerter(options: AlerterOptions): Worker {
         log.error({ jobId: job.id, data: job.data }, 'malformed alerts job — dropping');
         return;
       }
-      const { incidentId, event } = parsed.data;
+      const data = parsed.data;
+      const event = data.event;
 
-      const built = await buildAlertPayload(db, incidentId, event, publicUrl);
-      if (!built) {
-        log.warn({ incidentId }, 'alert for unknown incident — dropping');
-        return;
+      // Two producers. A check alert resolves an incident into a payload and
+      // targets that application's channels; a monitoring alert has no
+      // application at all, so it goes to every all_apps channel — those are
+      // the ones subscribed to the platform rather than to one target.
+      let payload: AlertWebhookPayload;
+      let incidentId: string | null = null;
+      let appId: string | null = null;
+
+      if ('incidentId' in data) {
+        const built = await buildAlertPayload(db, data.incidentId, data.event, publicUrl);
+        if (!built) {
+          log.warn({ incidentId: data.incidentId }, 'alert for unknown incident — dropping');
+          return;
+        }
+        payload = built.payload;
+        incidentId = data.incidentId;
+        appId = built.appId;
+      } else {
+        payload = {
+          event: data.event === 'stalled' ? 'monitoring.stalled' : 'monitoring.resumed',
+          monitoring: {
+            lastRunAt: data.lastRunAt,
+            silentForSeconds: data.silentForSeconds,
+            thresholdMinutes: data.thresholdMinutes,
+          },
+          timestamp: new Date().toISOString(),
+        };
       }
 
-      // Channels: enabled AND (all_apps OR explicitly bound to this app).
-      const channelRows = await db
-        .selectDistinct({ channel: alertChannels })
-        .from(alertChannels)
-        .leftJoin(
-          appAlertChannels,
-          and(eq(appAlertChannels.channelId, alertChannels.id), eq(appAlertChannels.appId, built.appId)),
-        )
-        .where(
-          and(
-            eq(alertChannels.enabled, true),
-            or(eq(alertChannels.allApps, true), eq(appAlertChannels.appId, built.appId)),
-          ),
-        );
+      const channelRows =
+        appId === null
+          ? await db
+              .select({ channel: alertChannels })
+              .from(alertChannels)
+              .where(and(eq(alertChannels.enabled, true), eq(alertChannels.allApps, true)))
+          : // Channels: enabled AND (all_apps OR explicitly bound to this app).
+            await db
+              .selectDistinct({ channel: alertChannels })
+              .from(alertChannels)
+              .leftJoin(
+                appAlertChannels,
+                and(eq(appAlertChannels.channelId, alertChannels.id), eq(appAlertChannels.appId, appId)),
+              )
+              .where(
+                and(
+                  eq(alertChannels.enabled, true),
+                  or(eq(alertChannels.allApps, true), eq(appAlertChannels.appId, appId)),
+                ),
+              );
 
       for (const { channel } of channelRows) {
-        const outcome = await deliverToChannel(channel, built.payload, publicUrl, {
+        const outcome = await deliverToChannel(channel, payload, publicUrl, {
           ...(options.backoffBaseMs !== undefined ? { backoffBaseMs: options.backoffBaseMs } : {}),
         });
         await db.insert(alertDeliveries).values({

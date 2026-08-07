@@ -21,6 +21,7 @@ import {
 import { relations } from 'drizzle-orm';
 import type { UptimeConfig, JourneyConfig } from '../schemas/checks.js';
 import type { ChannelConfig } from '../schemas/channels.js';
+import { ALERT_EVENTS } from '../constants.js';
 
 // ---- Enums ----
 export const userRoleEnum = pgEnum('user_role', ['admin', 'editor', 'viewer']);
@@ -28,7 +29,7 @@ export const checkTypeEnum = pgEnum('check_type', ['uptime', 'journey']);
 export const runStatusEnum = pgEnum('run_status', ['passed', 'failed', 'error', 'timeout']);
 export const runTriggerEnum = pgEnum('run_trigger', ['schedule', 'manual', 'screenshot']);
 export const channelTypeEnum = pgEnum('channel_type', ['slack', 'discord', 'webhook']);
-export const alertEventEnum = pgEnum('alert_event', ['down', 'recovered']);
+export const alertEventEnum = pgEnum('alert_event', ALERT_EVENTS);
 export const deliveryStatusEnum = pgEnum('delivery_status', ['sent', 'failed']);
 
 const createdAt = timestamp('created_at', { withTimezone: true }).notNull().defaultNow();

@@ -44,6 +44,21 @@
   - Both `uptime` modes drive the application's status badge. `DOWN` requires *every*
     liveness check to be failing; a single failing check among several is `DEGRADED`.
     A failing `journey` can degrade an application but never marks it `DOWN`.
+- FR-2.4 **Dead-man's switch**: if no check completes anywhere on the platform within
+  `heartbeat.stall_minutes` (Settings, default 15, 0 disables), Vyzus raises a
+  platform-level `monitoring.stalled` alert to every all-apps channel and banners the
+  dashboard. A `monitoring.resumed` alert follows when runs return. Each transition
+  alerts exactly once.
+  - This is the failure no per-check alert can express: a dead worker fires no checks,
+    so nothing fails, no incident opens, and the last known status is served forever —
+    silence is indistinguishable from health.
+  - The threshold is raised automatically to twice the shortest enabled check interval
+    when that is longer, so a deployment whose only check runs hourly does not alert
+    every 15 minutes.
+  - Silence is not a fault when there is nothing to run: an app or check that is
+    disabled, or a threshold of 0, never triggers it.
+  - The switch runs in the API process, not the worker — a switch hosted by the
+    process it watches dies with it.
 - FR-2.3 **Journey check**:
   - The test body is a Playwright TypeScript snippet uploaded or pasted/edited in the dashboard (Monaco editor). Users record it locally with `npx playwright codegen <url>`.
   - The platform wraps the snippet in its own runner harness (see 02-architecture §5.2); the snippet exports steps using the standard `page` API.

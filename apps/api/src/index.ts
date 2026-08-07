@@ -11,6 +11,7 @@ import { buildApp } from './app.js';
 import { BullMqSchedulerService } from './services/scheduler.js';
 import { startAlerter } from './services/alerter.js';
 import { startRetentionWorker } from './services/retention.js';
+import { createAlertsQueue, runHeartbeat } from './services/heartbeat.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -38,19 +39,28 @@ async function main(): Promise<void> {
     log,
   });
 
-  // Retention (Phase 7): daily maintenance repeatable is registered by
-  // reconcileSchedules above; this worker consumes it.
+  // Maintenance (Phase 7 + dead-man's switch): the daily retention and
+  // per-minute heartbeat repeatables are registered by reconcileSchedules
+  // above; this worker consumes both.
+  //
+  // The heartbeat lives in the API on purpose. Hosting it in the worker would
+  // mean the switch dies with the process it exists to watch.
+  const heartbeatAlerts = createAlertsQueue(redis);
   const retention = startRetentionWorker({
     connection: redis,
     db: dbHandle.db,
     artifactsDir: config.ARTIFACTS_DIR,
     log,
+    onHeartbeat: async () => {
+      await runHeartbeat(dbHandle.db, heartbeatAlerts, log);
+    },
   });
 
   const close = async (signal: string): Promise<void> => {
     app.log.info({ signal }, 'shutting down');
     await alerter.close();
     await retention.close();
+    await heartbeatAlerts.close();
     await scheduler.close();
     await app.close();
     await dbHandle.sql.end({ timeout: 5 });

@@ -3,6 +3,7 @@ import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import { loadConfig } from '../config.js';
+import { evaluateHeartbeat } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
 /** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
@@ -167,5 +168,87 @@ describe('TokenService', () => {
     expect(a.hash).not.toBe(b.hash);
     const claims = await tokens.verifyRefreshToken(a.token);
     expect(claims.sub).toBe('u1');
+  });
+});
+
+describe("evaluateHeartbeat — dead-man's switch", () => {
+  const base = {
+    now: new Date('2026-08-07T12:00:00Z'),
+    since: new Date('2026-08-07T00:00:00Z'),
+    enabledChecks: 3,
+    shortestIntervalMinutes: 5,
+    stallMinutes: 15,
+  };
+
+  it('is quiet while runs keep arriving', () => {
+    const v = evaluateHeartbeat({ ...base, lastRunAt: new Date('2026-08-07T11:58:00Z') });
+    expect(v.stalled).toBe(false);
+    expect(v.silentForSeconds).toBe(120);
+  });
+
+  it('stalls once silence passes the threshold', () => {
+    const v = evaluateHeartbeat({ ...base, lastRunAt: new Date('2026-08-07T11:40:00Z') });
+    expect(v.stalled).toBe(true);
+    expect(v.effectiveThresholdMinutes).toBe(15);
+  });
+
+  it('is off when stallMinutes is 0, however long the silence', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      stallMinutes: 0,
+      lastRunAt: new Date('2026-08-01T00:00:00Z'),
+    });
+    expect(v.stalled).toBe(false);
+  });
+
+  it('never stalls when nothing is enabled — silence is then correct', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      enabledChecks: 0,
+      shortestIntervalMinutes: null,
+      lastRunAt: new Date('2026-08-01T00:00:00Z'),
+    });
+    expect(v.stalled).toBe(false);
+  });
+
+  // The guard that stops an hourly-only deployment alerting every 15 minutes.
+  it('raises the threshold to twice the shortest interval when that is longer', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      shortestIntervalMinutes: 60,
+      lastRunAt: new Date('2026-08-07T11:00:00Z'), // 60m of silence
+    });
+    expect(v.effectiveThresholdMinutes).toBe(120);
+    expect(v.stalled).toBe(false);
+  });
+
+  it('still stalls an hourly check once past twice its interval', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      shortestIntervalMinutes: 60,
+      lastRunAt: new Date('2026-08-07T09:30:00Z'), // 150m of silence
+    });
+    expect(v.stalled).toBe(true);
+  });
+
+  // A fresh deployment has no runs at all; measuring from the epoch would
+  // declare it stalled the moment the first check is created.
+  it('measures from `since` when nothing has ever run', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      lastRunAt: null,
+      since: new Date('2026-08-07T11:55:00Z'),
+    });
+    expect(v.silentForSeconds).toBe(300);
+    expect(v.stalled).toBe(false);
+  });
+
+  it('stalls a deployment whose first check never ran at all', () => {
+    const v = evaluateHeartbeat({
+      ...base,
+      lastRunAt: null,
+      since: new Date('2026-08-07T10:00:00Z'),
+    });
+    expect(v.stalled).toBe(true);
   });
 });
