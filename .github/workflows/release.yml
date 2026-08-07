@@ -61,6 +61,19 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # Matters most here: a mismatch means the published worker image ships a
+      # browser build the client cannot drive. CI checks this on every PR, but a
+      # tag can point at any commit, so it is re-checked against the tag itself.
+      - name: Playwright version lockstep
+        run: |
+          pkg_version=$(node -p "require('./apps/worker/package.json').dependencies.playwright")
+          mapfile -t img_versions < <(grep -oP 'playwright:v\K[0-9.]+' infra/worker.Dockerfile)
+          echo "package.json: $pkg_version — Dockerfile tags: ${img_versions[*]}"
+          for v in "${img_versions[@]}"; do
+            test "$pkg_version" = "$v" || {
+              echo "::error file=infra/worker.Dockerfile::playwright $pkg_version does not match image tag v$v — bump both together"
+              exit 1; }
+          done
       - name: Install Playwright Chromium
         run: pnpm --filter @vyzus/worker exec playwright install --with-deps chromium
       - name: Lint

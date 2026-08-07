@@ -1,9 +1,13 @@
 name: CI
 
+# Runs where the answer changes a decision: on a pull request, before merging,
+# and on demand. Not on every push to main — that re-verified a commit CI had
+# already checked as a PR, at the cost of a full Chromium run each time.
+# Releases are covered separately: release.yml re-verifies the tagged commit
+# from scratch before publishing anything.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -35,8 +39,11 @@ jobs:
             git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
             files=$(git diff --name-only "$base"...HEAD)
           else
-            # First commit on a branch has no parent to diff against.
-            files=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git ls-files)
+            # A manual run is an explicit "check everything" — no filtering.
+            echo "manual run: forcing every job"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "docker=true" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "changed files:"; echo "$files"
 
