@@ -4,8 +4,13 @@
 // dashboard uses — nothing here is a special backdoor. Upserts by name and is
 // safe to re-run: unchanged apps/checks are left alone.
 //
-// Usage:
+// Usage (preferred — a scoped, revocable API token, so no human password
+// ever reaches a pipeline; create one under Settings or POST /tokens):
 //   VYZUS_API_URL=http://localhost:8080/api/v1 \
+//   VYZUS_TOKEN=vyz_... \
+//   node scripts/sync-targets.mjs [--dir targets] [--prune] [--dry-run]
+//
+// Or with a password, for interactive one-off use:
 //   VYZUS_EMAIL=admin@example.com VYZUS_PASSWORD=password123 \
 //   node scripts/sync-targets.mjs [--dir targets] [--prune] [--dry-run]
 //

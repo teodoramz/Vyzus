@@ -20,6 +20,7 @@ import { appRoutes } from './routes/apps.js';
 import { checkRoutes } from './routes/checks.js';
 import { channelRoutes } from './routes/channels.js';
 import { settingsRoutes } from './routes/settings.js';
+import { tokenRoutes } from './routes/tokens.js';
 import { statsRoutes } from './routes/stats.js';
 import { runRoutes } from './routes/runs.js';
 import { incidentRoutes } from './routes/incidents.js';
@@ -58,7 +59,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   app.decorate('tokens', tokens);
   app.decorate('encryptionKey', config.ENCRYPTION_KEY);
   app.decorate('scheduler', deps.scheduler ?? new NoopSchedulerService(app.log));
-  app.decorate('authenticate', createAuthenticate(tokens));
+  app.decorate('authenticate', createAuthenticate(tokens, dbHandle.db));
   app.decorate('requireRole', (...roles) => createRequireRole(...roles));
 
   await app.register(healthRoutes, { prefix: '/api/v1' });
@@ -68,6 +69,7 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(checkRoutes, { prefix: '/api/v1' });
   await app.register(channelRoutes, { prefix: '/api/v1/channels' });
   await app.register(settingsRoutes, { prefix: '/api/v1/settings' });
+  await app.register(tokenRoutes, { prefix: '/api/v1/tokens' });
   await app.register(statsRoutes, { prefix: '/api/v1' });
   await app.register(runRoutes, { prefix: '/api/v1' });
   await app.register(incidentRoutes, { prefix: '/api/v1' });

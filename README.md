@@ -146,9 +146,14 @@ Prefer version-controlled targets over clicking through the UI? Put apps + journ
 checks under `targets/` and sync them via the same REST API the dashboard uses:
 
 ```bash
-VYZUS_API_URL=http://localhost:8080/api/v1 VYZUS_EMAIL=... VYZUS_PASSWORD=... \
+VYZUS_API_URL=http://localhost:8080/api/v1 VYZUS_TOKEN=vyz_... \
   pnpm sync-targets            # add --dry-run to preview, --prune to delete stragglers
 ```
+
+`VYZUS_TOKEN` is an **API token** — scoped, revocable, and created from the
+dashboard or `POST /api/v1/tokens`. It acts as the user who created it, with the
+same role and application access, so a CI pipeline never needs a human's
+password. `VYZUS_EMAIL` + `VYZUS_PASSWORD` still work for interactive one-offs.
 
 See [`targets/README.md`](targets/README.md) for the file format and
 [`docs/07-user-guide.md`](docs/07-user-guide.md) §5 for the full walkthrough.

@@ -218,6 +218,35 @@ export const alertDeliveries = pgTable('alert_deliveries', {
   createdAt,
 });
 
+// ---- api_tokens ----
+// Scoped, revocable credentials for automation (CI provisioning via
+// scripts/sync-targets.mjs), so a pipeline never holds a human's password.
+//
+// A token belongs to a user and acts as that user: same id, same role, same
+// per-viewer application scoping. That is deliberate — it means every existing
+// authorization rule in lib/access.ts applies to tokens with no changes, rather
+// than a second permission model that can drift from the first.
+export const apiTokens = pgTable(
+  'api_tokens',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    // Operator-facing label, so a token can be identified without seeing it.
+    name: text('name').notNull(),
+    // SHA-256 of the token. Not argon2: the secret is 256 bits of CSPRNG
+    // output, so there is no dictionary to attack, and authentication needs an
+    // indexed lookup by hash rather than a scan-and-compare over every row.
+    tokenHash: text('token_hash').notNull().unique(),
+    // NULL = never expires. Checked at authentication time.
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    createdAt,
+  },
+  (t) => [index('api_tokens_user_idx').on(t.userId)],
+);
+
 // ---- settings (single-row key/value) ----
 export const settings = pgTable('settings', {
   key: text('key').primaryKey(),

@@ -70,6 +70,25 @@ run's `screenshot_path` — to avoid near-identical images piling up. It cost hi
 the operator wanted, so screenshots accumulate now; tune `screenshots_days` or the
 capture policy if the artifacts volume grows faster than you want.
 
+## api_tokens
+| column | type | notes |
+|---|---|---|
+| id | uuid PK | |
+| user_id | uuid FK → users ON DELETE CASCADE | the token acts as this user |
+| name | text NOT NULL | operator-facing label |
+| token_hash | text NOT NULL UNIQUE | SHA-256 of the secret; the plaintext is shown once at creation and never stored |
+| expires_at | timestamptz NULL | NULL = never expires; checked at authentication |
+| last_used_at | timestamptz NULL | best-effort stamp so unused tokens can be spotted |
+| created_at | timestamptz | |
+
+Index: `(user_id)`. SHA-256 rather than argon2 because the secret is 256 bits of
+CSPRNG output — there is no dictionary to attack, and authentication needs an
+indexed lookup by hash rather than a scan-and-compare over every row.
+
+A token carries no permissions of its own: it resolves to its owning user, so
+every rule in `apps/api/src/lib/access.ts` applies unchanged rather than through
+a second permission model that could drift from the first.
+
 ## runs
 | column | type | notes |
 |---|---|---|
