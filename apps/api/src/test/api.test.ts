@@ -459,7 +459,7 @@ describe('applications + checks CRUD', () => {
       payload: { config: { expectedStatus: 200, screenshot: 'never' } },
     });
     expect(legacyPatch.statusCode).toBe(200);
-    expect(legacyPatch.json().config).toMatchObject({ mode: 'http', expectedStatus: 200 });
+    expect(legacyPatch.json().config).toMatchObject({ mode: 'http', expectedStatus: 200, maxDurationMs: 0 });
 
     const del = await ctx.app.inject({
       method: 'DELETE',

@@ -35,6 +35,7 @@ const editorOrAdmin = (app: Parameters<FastifyPluginAsyncZod>[0]) => [app.authen
 function defaultUptimeConfig(): HttpModeConfig {
   return {
     mode: 'http',
+    maxDurationMs: 0,
     expectedStatus: 200,
     screenshot: 'on_change',
     screenshotRefreshMinutes: DEFAULT_SCREENSHOT_REFRESH_MINUTES,

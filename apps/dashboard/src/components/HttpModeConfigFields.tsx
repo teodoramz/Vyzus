@@ -134,6 +134,31 @@ export function HttpModeConfigFields({
           </p>
         </div>
       )}
+
+      <div>
+        <label htmlFor="maxDurationMs" className={labelClass}>
+          Fail if slower than
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            id="maxDurationMs"
+            type="number"
+            min={0}
+            max={300000}
+            step={100}
+            placeholder="off"
+            value={config.maxDurationMs || ''}
+            onChange={(e) => onChange({ ...config, maxDurationMs: e.target.value ? Number(e.target.value) : 0 })}
+            className={`${inputClass} max-w-32`}
+          />
+          <span className="text-sm text-slate-500 dark:text-zinc-400">ms</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+          {config.maxDurationMs > 0
+            ? `A run that returns the expected status but takes longer than ${config.maxDurationMs} ms fails. Measured up to the last assertion, excluding screenshot capture, and recorded as responseMs on the run.`
+            : 'Off — a check passes however slow it was, so "up but badly degraded" stays invisible.'}
+        </p>
+      </div>
     </div>
   );
 }

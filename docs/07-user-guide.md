@@ -29,6 +29,7 @@ Both drive the application's Up/Down status.
 | Text present on page (optional) | fails if `document.body.innerText` doesn't contain it |
 | Page title contains (optional) | fails if `document.title` stops containing it |
 | Screenshot | `Every run`, `On failure and recovery` (default), `On failure only`, or `Never` |
+| Fail if slower than | ms; a run returning the expected status but taking longer fails. `0` disables it |
 | Also refresh while healthy | minutes; on a passing run, refresh the stored screenshot once it is older than this. Empty = only capture on failure/recovery |
 
 It also records timing metrics (TTFB, DOM-content-loaded, full load) shown on the

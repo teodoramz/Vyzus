@@ -19,6 +19,11 @@
     plus the first success afterwards), `on_failure`, or `never`. `on_change`/`on_failure` may also
     set `screenshotRefreshMinutes` so a healthy check refreshes its picture on that cadence
     (default 60 for new checks) instead of showing whatever it looked like at the last incident.
+    `maxDurationMs` (0 = off, the default) fails a run that returned the expected status
+    but took longer, so "up but badly degraded" stops being invisible. Measured from
+    navigation through the last assertion and recorded as `responseMs` in run metrics —
+    screenshot capture is excluded, being the platform's own overhead rather than the
+    target's. A genuine assertion failure keeps its own error message.
     Every screenshot taken is kept and stays paired with its run — capture frequency is
     controlled by the policy above, never by discarding stored images afterwards
     (`docs/03-data-model.md`). The Screenshot button always captures regardless of policy.

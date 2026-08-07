@@ -47,7 +47,7 @@ permission model.
 | timeout_ms | int DEFAULT 30000 | hard kill |
 | failure_threshold | int DEFAULT 2 | consecutive failures → incident |
 | enabled | boolean DEFAULT true | |
-| config | jsonb NOT NULL | uptime is itself a `mode`-discriminated shape — `http`: `{ mode: 'http', expectedStatus, selector?, bodyText?, title?, screenshot: 'always'\|'on_change'\|'on_failure'\|'never', screenshotRefreshMinutes? }`; `port`: `{ mode: 'port', host, port, protocol: 'tcp'\|'udp', family: 'auto'\|'4'\|'6', tls, allowInsecureCert, certExpiryWarningDays }` — journey: `{ specSource: string }`. Rows predating the http/port split omit `mode`; the schema stamps `mode: 'http'` on read (see `packages/shared/src/schemas/checks.ts`), no migration needed. |
+| config | jsonb NOT NULL | uptime is itself a `mode`-discriminated shape — `http`: `{ mode: 'http', expectedStatus, selector?, bodyText?, title?, screenshot: 'always'\|'on_change'\|'on_failure'\|'never', screenshotRefreshMinutes?, maxDurationMs }`; `port`: `{ mode: 'port', host, port, protocol: 'tcp'\|'udp', family: 'auto'\|'4'\|'6', tls, allowInsecureCert, certExpiryWarningDays }` — journey: `{ specSource: string }`. Rows predating the http/port split omit `mode`; the schema stamps `mode: 'http'` on read (see `packages/shared/src/schemas/checks.ts`), no migration needed. |
 | consecutive_failures | int DEFAULT 0 | incident state machine counter |
 | last_status | enum `passed`\|`failed`\|`error`\|`timeout` NULL | denormalized for the grid |
 | last_run_at | timestamptz NULL | denormalized |

@@ -107,7 +107,7 @@ async function seedIncident() {
       type: 'uptime',
       name: 'Landing uptime',
       intervalMinutes: 5,
-      config: { mode: 'http', expectedStatus: 200, screenshot: 'on_failure' },
+      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, screenshot: 'on_failure' },
     })
     .returning();
   const [run] = await ctx.dbHandle.db

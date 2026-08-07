@@ -45,6 +45,16 @@ export const httpModeConfigSchema = z
     // than whatever it looked like at the last incident. Unset means no
     // periodic refresh (failures/recoveries only). Capped at a week.
     screenshotRefreshMinutes: z.number().int().min(1).max(10080).optional(),
+    // Fail a run that returns the expected status but took longer than this.
+    // "Up but badly degraded" is otherwise invisible: a check passes however
+    // slow it was, so a site crawling at 20s looks identical to a healthy one.
+    // 0 disables it, which is the default — enabling it by fiat would flip
+    // existing checks to failing based on a number nobody chose.
+    // Measured from navigation start through the last assertion, and recorded
+    // as `responseMs` in the run metrics. Deliberately excludes screenshot
+    // capture — that is the platform's own overhead, and a threshold tripped by
+    // a slow PNG encode would be a false alarm.
+    maxDurationMs: z.number().int().min(0).max(300_000).default(0),
   })
   .strict();
 export type HttpModeConfig = z.infer<typeof httpModeConfigSchema>;

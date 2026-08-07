@@ -33,6 +33,15 @@ export async function startTestSite(): Promise<TestSite> {
       // Never responds — navigation timeout path.
       return;
     }
+    if (req.url === '/lag') {
+      // Responds, but only after a beat — the latency-threshold path, which
+      // needs a run that genuinely passes every assertion yet is slow.
+      setTimeout(() => {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end('<html><head><title>Test Site</title></head><body><h1 id="hero">slow but fine</h1></body></html>');
+      }, 900);
+      return;
+    }
     if (req.url === '/echo-ua') {
       // Renders what the server actually received + what the page sees, so a
       // test can assert the real request fingerprint rather than trusting the
@@ -113,7 +122,7 @@ export async function seedAppWithCheck(
       intervalMinutes: 1,
       timeoutMs: 10_000,
       failureThreshold: 2,
-      config: { mode: 'http', expectedStatus: 200, screenshot: 'on_failure', ...uptimeConfig },
+      config: { mode: 'http', expectedStatus: 200, screenshot: 'on_failure', maxDurationMs: 0, ...uptimeConfig },
       ...checkOverrides,
     })
     .returning();

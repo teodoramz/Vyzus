@@ -142,6 +142,17 @@ export async function executeUptime(
       metrics = { httpStatus };
     }
 
+    // Latency threshold. Measured here, before the screenshot: capturing one is
+    // our own overhead, not the site's, and a threshold that fired because our
+    // PNG encode was slow would be a false alarm. The value is recorded in
+    // metrics so a failure can be reconciled against the number that caused it.
+    const responseMs = Date.now() - startedAt;
+    if (metrics) metrics.responseMs = responseMs;
+    if (status === 'passed' && config.maxDurationMs > 0 && responseMs > config.maxDurationMs) {
+      status = 'failed';
+      errorMessage = `Responded in ${responseMs} ms, over the ${config.maxDurationMs} ms limit`;
+    }
+
     // Screenshot per the caller's decision; best-effort on error/timeout pages too.
     let screenshotPath: string | null = null;
     if (artifacts && captureScreenshot(status)) {

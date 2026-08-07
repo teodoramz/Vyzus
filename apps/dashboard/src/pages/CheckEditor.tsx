@@ -33,6 +33,7 @@ function defaultHttpConfig(): HttpModeConfig {
     expectedStatus: 200,
     screenshot: 'on_change',
     screenshotRefreshMinutes: DEFAULT_SCREENSHOT_REFRESH_MINUTES,
+    maxDurationMs: 0,
   };
 }
 function defaultPortConfig(): PortModeConfig {
