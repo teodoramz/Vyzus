@@ -57,6 +57,17 @@
   argon2 work. A correct password clears both counters. `POST /auth/setup` is not
   throttled — it is single-use and 409s afterwards, so throttling it would only offer
   a way to lock a fresh install out of its own first login.
+- FR-5.4 **Maintenance windows**: a scheduled window suppresses alert *delivery* for one
+  application, or platform-wide (admin only), between `startsAt` and `endsAt` (half-open,
+  so adjacent windows leave no unsuppressed instant).
+  - Suppression never stops execution. Checks keep running, runs are recorded, and
+    incidents still open and close — so the history stays complete, and the dead-man's
+    switch (FR-2.4), which watches for runs *stopping*, is unaffected. A window that
+    paused execution would trip it.
+  - Platform alerts (`monitoring.stalled`) are never suppressed: "the monitoring itself
+    stopped" is exactly what you still want to hear during a deploy.
+  - The dashboard banners an active window, so a silenced platform is never mistaken
+    for a healthy one.
 - FR-2.4 **Dead-man's switch**: if no check completes anywhere on the platform within
   `heartbeat.stall_minutes` (Settings, default 15, 0 disables), Vyzus raises a
   platform-level `monitoring.stalled` alert to every all-apps channel and banners the

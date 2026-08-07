@@ -3,7 +3,7 @@ import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import { loadConfig } from '../config.js';
-import { evaluateHeartbeat } from '@vyzus/shared';
+import { evaluateHeartbeat, activeMaintenanceWindow } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
 /** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
@@ -250,5 +250,54 @@ describe("evaluateHeartbeat — dead-man's switch", () => {
       since: new Date('2026-08-07T10:00:00Z'),
     });
     expect(v.stalled).toBe(true);
+  });
+});
+
+describe('activeMaintenanceWindow', () => {
+  const APP = '11111111-1111-4111-8111-111111111111';
+  const OTHER = '22222222-2222-4222-8222-222222222222';
+  const w = (appId: string | null, from: string, to: string) => ({
+    appId,
+    startsAt: new Date(from),
+    endsAt: new Date(to),
+    reason: 'deploy',
+  });
+  const at = (t: string) => new Date(t);
+
+  it('matches a window scoped to the application', () => {
+    const windows = [w(APP, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T01:30:00Z'))).not.toBeNull();
+  });
+
+  it('ignores a window scoped to a different application', () => {
+    const windows = [w(OTHER, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T01:30:00Z'))).toBeNull();
+  });
+
+  it('a platform-wide window (null appId) covers every application', () => {
+    const windows = [w(null, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T01:30:00Z'))).not.toBeNull();
+    expect(activeMaintenanceWindow(windows, OTHER, at('2026-08-07T01:30:00Z'))).not.toBeNull();
+  });
+
+  it('is half-open: start is inside, end is not', () => {
+    const windows = [w(APP, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T01:00:00Z'))).not.toBeNull();
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T02:00:00Z'))).toBeNull();
+  });
+
+  // Back-to-back windows must leave no unsuppressed instant between them.
+  it('leaves no gap between adjacent windows', () => {
+    const windows = [
+      w(APP, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z'),
+      w(APP, '2026-08-07T02:00:00Z', '2026-08-07T03:00:00Z'),
+    ];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T02:00:00Z'))).not.toBeNull();
+  });
+
+  it('is null outside every window', () => {
+    const windows = [w(APP, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T00:59:59Z'))).toBeNull();
+    expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T03:00:00Z'))).toBeNull();
   });
 });

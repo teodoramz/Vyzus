@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { settingsApi } from '../api/endpoints';
 import { ApiError } from '../api/http';
 import { useAuth } from '../auth/AuthContext';
+import { MaintenanceWindows } from '../components/MaintenanceWindows';
 import { inputClass, labelClass, primaryButtonClass } from '../components/formFields';
 
 export function Settings(): JSX.Element {
@@ -151,6 +152,10 @@ export function Settings(): JSX.Element {
           )}
         </form>
       )}
+
+      <div className="mt-8 border-t border-gray-200 pt-8 dark:border-white/10">
+        <MaintenanceWindows />
+      </div>
     </div>
   );
 }

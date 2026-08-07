@@ -61,6 +61,10 @@ import {
   type UpdateSettingsBody,
   type Stats,
   type AppStatus,
+  maintenanceWindowSchema,
+  maintenanceWindowListSchema,
+  type MaintenanceWindow,
+  type CreateMaintenanceWindowBody,
 } from '@vyzus/shared';
 import { z } from 'zod';
 import { apiRequest, apiRequestVoid } from './http';
@@ -192,6 +196,16 @@ export const channelsApi = {
 export const settingsApi = {
   get: () => apiRequest<Settings>('/settings', settingsSchema),
   update: (body: UpdateSettingsBody) => apiRequest<Settings>('/settings', settingsSchema, { method: 'PATCH', body }),
+};
+
+// ---- Maintenance windows ----
+
+export const maintenanceApi = {
+  list: () => apiRequest<MaintenanceWindow[]>('/maintenance', maintenanceWindowListSchema),
+  active: () => apiRequest<MaintenanceWindow[]>('/maintenance/active', maintenanceWindowListSchema),
+  create: (body: CreateMaintenanceWindowBody) =>
+    apiRequest<MaintenanceWindow>('/maintenance', maintenanceWindowSchema, { method: 'POST', body }),
+  remove: (id: string) => apiRequestVoid(`/maintenance/${id}`, { method: 'DELETE' }),
 };
 
 // ---- Stats ----

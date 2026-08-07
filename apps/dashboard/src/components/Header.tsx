@@ -13,6 +13,7 @@ import { useDarkMode } from '../hooks/useDarkMode';
 import { useConnectionState } from '../ws/RealtimeProvider';
 import { getSeenIncidentIds } from '../lib/seenIncidents';
 import { VyzusMark } from './VyzusMark';
+import { MaintenanceBanner } from './MaintenanceBanner';
 import { SunIcon, MoonIcon } from './icons';
 
 function BellIcon(): JSX.Element {
@@ -74,6 +75,7 @@ export function Header(): JSX.Element {
           The status shown below is stale; check that the Vyzus worker is running.
         </div>
       )}
+      <MaintenanceBanner />
       <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
         <NavLink
           to="/"

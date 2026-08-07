@@ -11,6 +11,7 @@ import { QUEUE_NAMES, ALERT_SIGNATURE_HEADER, type AlertJobPayload } from '@vyzu
 import {
   alertChannels,
   alertDeliveries,
+  maintenanceWindows,
   applications,
   appAlertChannels,
   checks,
@@ -210,6 +211,69 @@ describe('alerter queue consumer', () => {
     expect(deliveries).toHaveLength(2);
     expect(deliveries.every((d) => d.status === 'sent' && d.attempts === 1 && d.responseCode === 200)).toBe(true);
     expect(deliveries.every((d) => d.incidentId === incident.id && d.event === 'down')).toBe(true);
+  });
+
+  // Maintenance windows suppress the notification only. The check still ran,
+  // the incident still opened — nobody was paged for planned work.
+  it('suppresses delivery during an active maintenance window', async () => {
+    const { app, incident } = await seedIncident();
+    await ctx.dbHandle.db
+      .insert(alertChannels)
+      .values([{ name: 'hook', type: 'webhook', config: { url: `${listener.url}/hook` }, allApps: true }]);
+
+    const now = Date.now();
+    await ctx.dbHandle.db.insert(maintenanceWindows).values({
+      appId: app.id,
+      reason: 'deploy',
+      startsAt: new Date(now - 60_000),
+      endsAt: new Date(now + 60_000),
+    });
+
+    await enqueueAndProcess({ incidentId: incident.id, event: 'down' });
+
+    expect(listener.requests).toHaveLength(0);
+    // No delivery row either — nothing was attempted, as opposed to failed.
+    expect(await ctx.dbHandle.db.select().from(alertDeliveries)).toHaveLength(0);
+  });
+
+  it('still delivers when the window covers a different application', async () => {
+    const { incident } = await seedIncident();
+    await ctx.dbHandle.db
+      .insert(alertChannels)
+      .values([{ name: 'hook', type: 'webhook', config: { url: `${listener.url}/hook` }, allApps: true }]);
+
+    const [other] = await ctx.dbHandle.db
+      .insert(applications)
+      .values({ name: 'Other', landingUrl: 'https://other.example.com', tags: [] })
+      .returning();
+    const now = Date.now();
+    await ctx.dbHandle.db.insert(maintenanceWindows).values({
+      appId: other!.id,
+      reason: 'unrelated deploy',
+      startsAt: new Date(now - 60_000),
+      endsAt: new Date(now + 60_000),
+    });
+
+    await enqueueAndProcess({ incidentId: incident.id, event: 'down' });
+    expect(listener.requests.map((r) => r.path)).toEqual(['/hook']);
+  });
+
+  it('still delivers once the window has ended', async () => {
+    const { app, incident } = await seedIncident();
+    await ctx.dbHandle.db
+      .insert(alertChannels)
+      .values([{ name: 'hook', type: 'webhook', config: { url: `${listener.url}/hook` }, allApps: true }]);
+
+    const now = Date.now();
+    await ctx.dbHandle.db.insert(maintenanceWindows).values({
+      appId: app.id,
+      reason: 'finished deploy',
+      startsAt: new Date(now - 120_000),
+      endsAt: new Date(now - 60_000),
+    });
+
+    await enqueueAndProcess({ incidentId: incident.id, event: 'down' });
+    expect(listener.requests.map((r) => r.path)).toEqual(['/hook']);
   });
 
   it('retries with backoff and logs attempts (2 failures then success)', async () => {

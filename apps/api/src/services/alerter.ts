@@ -8,13 +8,14 @@ import { createHmac } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
-import { and, eq, or } from 'drizzle-orm';
+import { and, eq, gt, lte, or } from 'drizzle-orm';
 import type { FastifyBaseLogger } from 'fastify';
 import {
   QUEUE_NAMES,
   ALERT_SIGNATURE_HEADER,
   alertJobPayloadSchema,
   isMonitoringAlert,
+  activeMaintenanceWindow,
   type AlertWebhookPayload,
   type MonitoringAlertWebhookPayload,
   type AlertEvent,
@@ -28,6 +29,7 @@ import {
   applications,
   checks,
   incidents,
+  maintenanceWindows,
   runs,
   type AlertChannelRow,
 } from '../db/schema.js';
@@ -320,6 +322,34 @@ export function startAlerter(options: AlerterOptions): Worker {
           },
           timestamp: new Date().toISOString(),
         };
+      }
+
+      // Planned-work suppression. Checked here, at dispatch, not at the
+      // scheduler: the check still ran and the incident still opened, so the
+      // history is intact and the dead-man's switch (which watches for runs
+      // stopping) sees nothing unusual — only the notification is withheld.
+      //
+      // Platform alerts are never suppressed: "the monitoring itself stopped"
+      // is exactly the thing you still want to hear during a deploy.
+      if (appId !== null) {
+        const now = new Date();
+        const windows = await db
+          .select({
+            appId: maintenanceWindows.appId,
+            startsAt: maintenanceWindows.startsAt,
+            endsAt: maintenanceWindows.endsAt,
+            reason: maintenanceWindows.reason,
+          })
+          .from(maintenanceWindows)
+          .where(and(lte(maintenanceWindows.startsAt, now), gt(maintenanceWindows.endsAt, now)));
+        const active = activeMaintenanceWindow(windows, appId, now);
+        if (active) {
+          log.info(
+            { incidentId, event, appId, reason: active.reason },
+            'alert suppressed by an active maintenance window',
+          );
+          return;
+        }
       }
 
       const channelRows =

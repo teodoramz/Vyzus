@@ -218,6 +218,34 @@ export const alertDeliveries = pgTable('alert_deliveries', {
   createdAt,
 });
 
+// ---- maintenance_windows ----
+// Alert suppression for planned work. Every deploy otherwise opens an incident
+// and notifies every attached channel, which makes routing these alerts
+// anywhere that wakes a human up impractical.
+//
+// Suppression applies to *notification*, never to execution: checks keep
+// running and every run is still recorded, so the history stays honest and the
+// dead-man's switch (which watches for runs stopping) is unaffected. Incidents
+// still open and close — you can see exactly what happened during the window,
+// nobody was just paged for it.
+export const maintenanceWindows = pgTable(
+  'maintenance_windows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    // NULL = platform-wide. Otherwise scoped to one application.
+    appId: uuid('app_id').references(() => applications.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt,
+  },
+  (t) => [
+    index('maintenance_windows_range_idx').on(t.startsAt, t.endsAt),
+    check('maintenance_windows_range_chk', sql`${t.endsAt} > ${t.startsAt}`),
+  ],
+);
+
 // ---- api_tokens ----
 // Scoped, revocable credentials for automation (CI provisioning via
 // scripts/sync-targets.mjs), so a pipeline never holds a human's password.

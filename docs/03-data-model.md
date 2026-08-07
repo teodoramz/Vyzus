@@ -70,6 +70,20 @@ run's `screenshot_path` — to avoid near-identical images piling up. It cost hi
 the operator wanted, so screenshots accumulate now; tune `screenshots_days` or the
 capture policy if the artifacts volume grows faster than you want.
 
+## maintenance_windows
+| column | type | notes |
+|---|---|---|
+| id | uuid PK | |
+| app_id | uuid FK → applications ON DELETE CASCADE, NULL | NULL = platform-wide |
+| reason | text NOT NULL | shown in the dashboard banner |
+| starts_at / ends_at | timestamptz NOT NULL | half-open `[starts_at, ends_at)`; CHECK `ends_at > starts_at` |
+| created_by | uuid FK → users ON DELETE SET NULL | |
+| created_at | timestamptz | |
+
+Index: `(starts_at, ends_at)`. Suppression is applied at alert dispatch
+(`apps/api/src/services/alerter.ts`), never at the scheduler — checks keep
+running and every run is recorded.
+
 ## api_tokens
 | column | type | notes |
 |---|---|---|
