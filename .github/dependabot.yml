@@ -20,6 +20,12 @@ updates:
       # playwright must stay in lockstep with the worker.Dockerfile image tag
       # (enforced by the playwright-lockstep CI job) — bump both together.
       - dependency-name: playwright
+      # bullmq is pinned to an exact version, not a range. 5.81.3 broke the
+      # worker: jobs lost their Redis keys mid-processing ("Missing key for
+      # job ... moveToFinished" / "could not renew lock"), failing four e2e
+      # pipeline tests. Unpin only with a green `pnpm --filter @vyzus/worker
+      # test` on the candidate version.
+      - dependency-name: bullmq
 
   - package-ecosystem: github-actions
     directory: /

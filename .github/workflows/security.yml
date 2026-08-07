@@ -41,6 +41,15 @@ jobs:
           cache: pnpm
       # Fails on known vulnerabilities of high/critical severity anywhere in the
       # lockfile. Moderate findings are reported in the log but don't block.
+      #
+      # Acknowledged exceptions live in `pnpm.auditConfig.ignoreGhsas` (root
+      # package.json) so the gate itself is never weakened. Currently one:
+      #   GHSA-qwww-vcr4-c8h2 — react-router RSC-mode CSRF. The advisory states
+      #   it only affects applications using the unstable RSC APIs; the
+      #   dashboard is a client-only SPA (BrowserRouter/Routes/Link). The fix
+      #   lands in react-router 8.3.0, and `react-router-dom` — what the
+      #   dashboard actually depends on — has no 8.x release, so there is no
+      #   upgrade path to take. Revisit when react-router-dom 8 ships.
       - name: pnpm audit (report all)
         run: pnpm audit || true
       - name: pnpm audit (gate on high+)

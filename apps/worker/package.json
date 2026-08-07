@@ -18,19 +18,19 @@
   },
   "dependencies": {
     "@vyzus/shared": "workspace:*",
-    "playwright": "1.54.0",
-    "bullmq": "^5.34.0",
-    "ioredis": "^5.4.0",
-    "drizzle-orm": "^0.38.0",
-    "postgres": "^3.4.0",
-    "pino": "^9.5.0",
-    "zod": "^3.24.0"
+    "bullmq": "5.80.2",
+    "drizzle-orm": "^0.45.2",
+    "ioredis": "^5.11.1",
+    "pino": "^9.14.0",
+    "playwright": "1.55.1",
+    "postgres": "^3.4.9",
+    "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
-    "tsup": "^8.3.0",
-    "tsx": "^4.19.0",
-    "typescript": "^5.7.0",
-    "vitest": "^3.0.0"
+    "@types/node": "^22.20.1",
+    "tsup": "^8.5.1",
+    "tsx": "^4.23.11",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }
