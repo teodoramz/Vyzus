@@ -52,21 +52,23 @@ permission model.
 | last_status | enum `passed`\|`failed`\|`error`\|`timeout` NULL | denormalized for the grid |
 | last_run_at | timestamptz NULL | denormalized |
 | sort_order | int DEFAULT 0 | user-controlled tab / "run all" order — see `PUT /apps/:id/checks/order` |
-| current_screenshot_run_id | uuid FK → runs ON DELETE SET NULL | screenshot streak dedup, uptime only — see below |
-| current_screenshot_path | text NULL | the run currently "owning" this check's streak screenshot |
-| last_screenshot_at | timestamptz NULL | when a screenshot was last stored — drives `screenshotRefreshMinutes`. Separate from the streak pointer, which resets on every pass/fail transition while the refresh cadence must keep running across them. |
+| last_screenshot_at | timestamptz NULL | when a screenshot was last stored — drives `screenshotRefreshMinutes`. A column rather than a `MAX()` over runs, so the cadence stays one indexed read on the hot path. |
 | created_at / updated_at | timestamptz | |
 
 Index: `(app_id)`. Every application gets a default `uptime` check on creation.
 
-**Screenshot streak dedup** (uptime checks only — journey failure screenshots stay
-1:1 with their trace): a run whose pass/fail outcome matches the check's *previous*
-run supersedes that streak's screenshot — the old file is deleted and the old run's
-`screenshot_path` is nulled, instead of keeping one near-identical file per run. A
-status change starts a fresh streak, whose screenshot is kept (it marks the
-transition). `current_screenshot_run_id`/`current_screenshot_path` track the run
-currently representing the active streak; see `apps/worker/src/processor.ts`
-`reconcileScreenshotStreak()`.
+**Screenshot retention**: every screenshot a run takes is kept, paired 1:1 with its
+run. How often one is taken is controlled entirely on the way in — the check's
+`screenshot` mode plus `screenshotRefreshMinutes` — and nothing removes a stored
+screenshot afterwards except age-based retention (`retention.screenshots_days`,
+see `apps/api/src/services/retention.ts`).
+
+Migration `0006` dropped `current_screenshot_run_id`/`current_screenshot_path`. They
+supported an earlier scheme where a run whose pass/fail outcome matched the previous
+run superseded that streak's screenshot — deleting the file and nulling the older
+run's `screenshot_path` — to avoid near-identical images piling up. It cost history
+the operator wanted, so screenshots accumulate now; tune `screenshots_days` or the
+capture policy if the artifacts volume grows faster than you want.
 
 ## runs
 | column | type | notes |

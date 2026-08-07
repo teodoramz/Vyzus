@@ -19,8 +19,9 @@
     plus the first success afterwards), `on_failure`, or `never`. `on_change`/`on_failure` may also
     set `screenshotRefreshMinutes` so a healthy check refreshes its picture on that cadence
     (default 60 for new checks) instead of showing whatever it looked like at the last incident.
-    Consecutive same-outcome runs still collapse to one file (screenshot streak dedup,
-    `docs/03-data-model.md`); the Screenshot button always captures regardless of policy.
+    Every screenshot taken is kept and stays paired with its run — capture frequency is
+    controlled by the policy above, never by discarding stored images afterwards
+    (`docs/03-data-model.md`). The Screenshot button always captures regardless of policy.
 - FR-2.2a **Uptime check, `port` mode**: a raw TCP/UDP reachability probe, no browser involved.
   - Target: a domain name or IPv4/IPv6 literal (`host`), a `port`, `protocol` (`tcp`/`udp`), and an
     optional forced `family` (`auto`/`4`/`6`).

@@ -230,7 +230,7 @@ describe('worker pipeline', () => {
     expect(run!.status).toBe('passed');
   });
 
-  it('collapses screenshots within a pass/fail streak but keeps one per transition', async () => {
+  it('keeps every screenshot it takes, across a pass/fail transition', async () => {
     const { check } = await seedAppWithCheck(handle, site.url, {}, { screenshot: 'always' });
     const shotPath = async (runId: string): Promise<string | null> => {
       const [run] = await handle.db.select().from(runs).where(eq(runs.id, runId));
@@ -244,72 +244,59 @@ describe('worker pipeline', () => {
         .catch(() => false);
     };
 
-    // Run 1: first screenshot ever — nothing to collapse into.
+    // Four runs: two passing, then two failing. Screenshots used to be
+    // superseded within each same-outcome streak; now all four are retained.
     const run1 = randomUUID();
     await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: run1 });
     const shot1 = await shotPath(run1);
-    expect(await exists(shot1)).toBe(true);
 
-    // Run 2: same outcome (passed) as run 1 — supersedes it.
     const run2 = randomUUID();
     await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: run2 });
-    expect(await shotPath(run1)).toBeNull(); // old run's DB reference cleared
-    expect(await exists(shot1)).toBe(false); // and its file deleted
     const shot2 = await shotPath(run2);
-    expect(await exists(shot2)).toBe(true);
 
-    // Run 3: status flips to failing — a transition keeps run 2's screenshot.
     site.setDown(true);
     const run3 = randomUUID();
     await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: run3 });
-    expect(await shotPath(run2)).toBe(shot2); // untouched
-    expect(await exists(shot2)).toBe(true);
     const shot3 = await shotPath(run3);
-    expect(await exists(shot3)).toBe(true);
 
-    // Run 4: same outcome (failing) as run 3 — supersedes it, but the earlier
-    // passing streak's screenshot (run 2) is a different bucket and stays put.
     const run4 = randomUUID();
     await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: run4 });
-    expect(await shotPath(run3)).toBeNull();
-    expect(await exists(shot3)).toBe(false);
-    expect(await exists(shot2)).toBe(true);
     const shot4 = await shotPath(run4);
-    expect(await exists(shot4)).toBe(true);
 
-    const [freshCheck] = await handle.db.select().from(checks).where(eq(checks.id, check.id));
-    expect(freshCheck!.currentScreenshotRunId).toBe(run4);
-    expect(freshCheck!.currentScreenshotPath).toBe(shot4);
+    const shots = [shot1, shot2, shot3, shot4];
+    // Every run kept its own DB reference — none was nulled by a later run.
+    for (const shot of shots) expect(shot).not.toBeNull();
+    // Four distinct paths, four files still on disk.
+    expect(new Set(shots).size).toBe(4);
+    for (const shot of shots) expect(await exists(shot)).toBe(true);
   }, 120_000);
 
-  it('collapses correctly even when several runs of the same check race concurrently', async () => {
+  it('keeps every screenshot when several runs of the same check race concurrently', async () => {
     // Simulates a burst of overdue repeatable jobs draining after a worker
     // restart, or a manual run landing next to a scheduled tick: several runs
-    // for the SAME check processed in parallel by the worker's concurrency,
-    // all sharing the same outcome bucket (the worst case for the streak race).
+    // for the SAME check processed in parallel by the worker's concurrency.
+    // This used to be the worst case for the streak-supersede race; with
+    // nothing superseded, the invariant is simply that no run loses its file.
     const { check } = await seedAppWithCheck(handle, site.url, {}, { screenshot: 'always' });
     const runIds = Array.from({ length: 5 }, () => randomUUID());
     await Promise.all(
       runIds.map((runId) => runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId })),
     );
 
-    const withShots = await handle.db
+    const stored = await handle.db
       .select({ id: runs.id, screenshotPath: runs.screenshotPath })
       .from(runs)
       .where(eq(runs.checkId, check.id));
-    const surviving = withShots.filter((r) => r.screenshotPath !== null);
-    // Exactly one screenshot should survive the whole burst, no matter the
-    // interleaving — a leaked extra means the race reopened.
-    expect(surviving).toHaveLength(1);
-
-    const [freshCheck] = await handle.db.select().from(checks).where(eq(checks.id, check.id));
-    expect(surviving[0]!.id).toBe(freshCheck!.currentScreenshotRunId);
-    expect(
-      await fs.access(path.join(artifactsRoot, surviving[0]!.screenshotPath!)).then(
-        () => true,
-        () => false,
-      ),
-    ).toBe(true);
+    expect(stored).toHaveLength(5);
+    for (const row of stored) {
+      expect(row.screenshotPath).not.toBeNull();
+      expect(
+        await fs.access(path.join(artifactsRoot, row.screenshotPath!)).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(true);
+    }
   }, 120_000);
 
   it('skips a scheduled run for a disabled check without persisting anything', async () => {

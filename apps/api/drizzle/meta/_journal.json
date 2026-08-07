@@ -43,6 +43,13 @@
       "when": 1786024813446,
       "tag": "0005_greedy_quasar",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786110970274,
+      "tag": "0006_lumpy_the_professor",
+      "breakpoints": true
     }
   ]
 }

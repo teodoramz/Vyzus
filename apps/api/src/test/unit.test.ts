@@ -21,8 +21,6 @@ function check(overrides: Partial<CheckRow>): CheckRow {
     lastStatus: null,
     lastRunAt: null,
     sortOrder: 0,
-    currentScreenshotRunId: null,
-    currentScreenshotPath: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

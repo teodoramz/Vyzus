@@ -17,7 +17,6 @@ import {
   uniqueIndex,
   primaryKey,
   check,
-  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { UptimeConfig, JourneyConfig } from '../schemas/checks.js';
@@ -105,22 +104,12 @@ export const checks = pgTable(
     // User-controlled tab/run-all order (not creation order) — lower first.
     // New checks get the next value after the app's current max.
     sortOrder: integer('sort_order').notNull().default(0),
-    // Screenshot dedup (uptime checks only): the run currently "owning" the
-    // screenshot for the check's ongoing pass/fail streak. A consecutive
-    // same-outcome run overwrites this streak's screenshot (deletes the old
-    // file, nulls the old run's screenshot_path) instead of keeping one file
-    // per run; a status change starts a fresh streak. See worker/processor.ts
-    // reconcileScreenshotStreak(). `runs` is declared below — the callback
-    // form defers resolution past this forward reference.
-    currentScreenshotRunId: uuid('current_screenshot_run_id').references((): AnyPgColumn => runs.id, {
-      onDelete: 'set null',
-    }),
-    currentScreenshotPath: text('current_screenshot_path'),
     // When this check last stored a screenshot. Drives the periodic refresh in
-    // `screenshotRefreshMinutes` — deliberately a column rather than deriving
-    // it from the current streak run's timestamp, because the streak pointer
-    // is reset on every pass/fail transition while the refresh cadence should
-    // keep running across those transitions.
+    // `screenshotRefreshMinutes`. A column rather than a MAX() over runs so the
+    // cadence stays a single indexed read on the hot path.
+    // (Dropped in 0006: current_screenshot_run_id / current_screenshot_path,
+    // which existed only to supersede a streak's screenshot. Every screenshot
+    // is kept now, so there is nothing to point at.)
     lastScreenshotAt: timestamp('last_screenshot_at', { withTimezone: true }),
     createdAt,
     updatedAt,

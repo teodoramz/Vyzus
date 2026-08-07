@@ -55,68 +55,41 @@ function isForeignKeyViolation(err: unknown): boolean {
 }
 
 /**
- * Persists lastStatus/lastRunAt and (uptime only) the screenshot-streak dedup
- * in one atomic step. Screenshot dedup: a run whose pass/fail outcome matches
- * the check's *previous* run supersedes that streak's screenshot (old file
- * deleted, old run's screenshot_path nulled) instead of accumulating one
- * near-identical file per run; a status change starts a fresh streak whose
- * screenshot is kept, since it marks the transition. Journey checks are never
- * deduped — their failure screenshots stay paired 1:1 with a trace.
+ * Persists lastStatus/lastRunAt and, for uptime checks that stored a
+ * screenshot, the timestamp driving the periodic refresh cadence.
+ *
+ * Every screenshot a run takes is kept. An earlier version superseded
+ * screenshots within a pass/fail streak — a consecutive same-outcome run
+ * deleted the previous run's file and nulled its `screenshot_path` — to avoid
+ * accumulating near-identical images. That traded away history the operator
+ * wanted, so capture frequency is now controlled solely on the way in (the
+ * `screenshot` mode and `screenshotRefreshMinutes`), and nothing is removed
+ * afterwards except by age-based retention.
  *
  * Concurrent runs of the *same* check are possible (a manual/screenshot
  * trigger landing next to a scheduled tick, or a burst of overdue repeatable
- * jobs draining after a worker restart) — without serialization, two runs can
- * both read the same stale "current streak" pointer and each supersede it
- * independently, leaking a stray undeleted file. A Postgres advisory lock
- * keyed by the check id (auto-released at transaction end, no deadlock/leak
- * risk) plus a fresh in-transaction read of the pointer closes that race.
+ * jobs draining after a worker restart). The advisory lock keyed by the check
+ * id (auto-released at transaction end, no deadlock/leak risk) keeps their
+ * updates to this row serialized, so the last writer wins cleanly instead of
+ * interleaving.
  */
 async function updateCheckAfterRun(
   db: WorkerDatabase,
-  store: ArtifactStore,
   check: Pick<CheckRow, 'id' | 'type'>,
   startedAt: Date,
   result: Pick<ExecutionResult, 'status' | 'screenshotPath'>,
-  runId: string,
 ): Promise<void> {
-  let fileToDelete: string | null = null;
-
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${check.id}))`);
 
     const patch: { lastStatus: ExecutionResult['status']; lastRunAt: Date } & Partial<
-      Pick<CheckRow, 'currentScreenshotRunId' | 'currentScreenshotPath' | 'lastScreenshotAt'>
+      Pick<CheckRow, 'lastScreenshotAt'>
     > = { lastStatus: result.status, lastRunAt: startedAt };
 
-    if (check.type === 'uptime' && result.screenshotPath) {
-      const [fresh] = await tx
-        .select({
-          lastStatus: checks.lastStatus,
-          currentScreenshotRunId: checks.currentScreenshotRunId,
-          currentScreenshotPath: checks.currentScreenshotPath,
-        })
-        .from(checks)
-        .where(eq(checks.id, check.id));
-      if (fresh) {
-        const bucket = result.status === 'passed';
-        const prevBucket = fresh.lastStatus === null ? null : fresh.lastStatus === 'passed';
-        if (prevBucket === bucket && fresh.currentScreenshotRunId && fresh.currentScreenshotPath) {
-          fileToDelete = fresh.currentScreenshotPath;
-          await tx.update(runs).set({ screenshotPath: null }).where(eq(runs.id, fresh.currentScreenshotRunId));
-        }
-        patch.currentScreenshotRunId = runId;
-        patch.currentScreenshotPath = result.screenshotPath;
-        // Drives the periodic refresh cadence. Advanced on every stored
-        // screenshot, including ones that supersede the current streak, so a
-        // long healthy stretch refreshes on schedule rather than never.
-        patch.lastScreenshotAt = startedAt;
-      }
-    }
+    if (check.type === 'uptime' && result.screenshotPath) patch.lastScreenshotAt = startedAt;
 
     await tx.update(checks).set(patch).where(eq(checks.id, check.id));
   });
-
-  if (fileToDelete) await store.deleteFile(fileToDelete);
 }
 
 export function createProcessor(deps: ProcessorDeps): {
@@ -297,7 +270,7 @@ export function createProcessor(deps: ProcessorDeps): {
       }
       throw err;
     }
-    await updateCheckAfterRun(db, store, check, startedAt, result, runId);
+    await updateCheckAfterRun(db, check, startedAt, result);
 
     // Incident state machine + alerts + WS events.
     const transitions = await evaluateIncident(db, check, {
