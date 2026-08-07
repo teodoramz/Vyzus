@@ -1,7 +1,7 @@
 # Vyzus — User-Simulation & Synthetic Monitoring Platform
 
-[![CI](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml/badge.svg?event=pull_request)](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml)
-[![Security](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml/badge.svg?event=schedule)](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml)
+[![CI](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml)
+[![Security](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 Vyzus drives a real Chromium browser against your applications on a schedule,
@@ -186,24 +186,26 @@ Start with the [user guide](docs/07-user-guide.md) if you want to run it, or
 
 GitHub Actions run on every push/PR:
 
-They run **on pull requests and on demand**, not on every push to `main` — a
-commit that already passed as a PR gains nothing from a second full Chromium run.
-Use *Run workflow* in the Actions tab to check a branch at any time; a manual run
-skips the path filtering and executes every job.
+They run **on every push to `main`, on pull requests, and on demand**, so any commit
+— including one that never went through a PR — gets a verdict you can look at. Use
+*Run workflow* in the Actions tab to check a branch at any time; a manual run skips
+the path filtering and executes every job.
 
-- **CI** (pull requests, manual) — ESLint + Prettier, build, strict typecheck, and
+- **CI** (push to main, pull requests, manual) — ESLint + Prettier, build, strict typecheck, and
   the full integration test suite (real Postgres/Redis/BullMQ/Chromium), all three
   Docker images, and a guard that the Playwright version stays in lockstep with the
   worker image tag. Documentation-only changes skip the expensive jobs.
-- **Security** (pull requests, weekly, manual) — CodeQL static analysis, `pnpm audit`
+- **Security** (push to main, pull requests, weekly, manual) — CodeQL static analysis, `pnpm audit`
   (fails on high/critical), PR dependency review, gitleaks secret scan, and Trivy
   scans of all three images plus the source tree. The weekly run is what catches a
   CVE published against a dependency nobody touched.
 - **Release** (semver tag, manual) — re-runs lint, format, build, typecheck, the
   full test suite and the Playwright lockstep guard against the tagged commit before
   publishing anything. A tag can point at any commit, so nothing is taken on trust.
-- **Dependabot** — weekly npm/Actions/Docker updates (Playwright pinned; it must
-  be bumped together with the worker image tag).
+- **Dependabot** — weekly npm/Actions/Docker updates. Four things are deliberately
+  held back: `playwright` and its Docker image (version-locked to each other, bump
+  both by hand), `bullmq` (5.81.3 loses job keys mid-run), and node majors (24 is
+  LTS; 25 unbundled corepack). Everything else is expected to go green on its own.
 
 ## License
 

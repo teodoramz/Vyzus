@@ -7,7 +7,7 @@ The compose file, Dockerfiles, nginx config and `.env.example` at the repo root 
 
 | Service | Dockerfile | Base image | Port |
 |---|---|---|---|
-| dashboard | `infra/dashboard.Dockerfile` | node:24-slim → nginx:1.27-alpine | **8080 → 80** (only exposed port) |
+| dashboard | `infra/dashboard.Dockerfile` | node:24-slim → nginx:1.31-alpine | **8080 → 80** (only exposed port) |
 | api | `infra/api.Dockerfile` | node:24-slim | 3000 (internal) |
 | worker | `infra/worker.Dockerfile` | mcr.microsoft.com/playwright:v1.55.1-noble | — |
 | postgres | — | postgres:16-alpine | 5432 (internal) |
@@ -16,7 +16,12 @@ The compose file, Dockerfiles, nginx config and `.env.example` at the repo root 
 All Dockerfiles are multi-stage pnpm-workspace builds: install with
 `--filter <pkg>...`, build shared + app, then `pnpm deploy --prod` for a pruned runtime
 layer. **The worker image tag must match the `playwright` version in
-`apps/worker/package.json`** — bump them together.
+`apps/worker/package.json`** — bump them together; the `playwright-lockstep` CI job
+enforces it, and Dependabot is configured to leave that image alone because its
+docker ecosystem cannot see the npm pin.
+
+Node stays on the **24 LTS** line. Dependabot skips node majors: 25 is not LTS and
+unbundled corepack, so `corepack enable` in these Dockerfiles exits 127 on it.
 
 ## Volumes
 - `pgdata` — Postgres data.
@@ -144,6 +149,18 @@ switch would die with the process it exists to watch.
 It does not cover an API that is itself down. For that, point an external uptime check
 at `GET /api/v1/health` — the standard advice for any self-hosted monitor.
 
+## Held-back dependencies
+
+Dependabot runs weekly and most updates are expected to merge on their own. Four are
+pinned on purpose; each is recorded in `.github/dependabot.yml` next to its ignore
+rule, and each has a reason that will not be obvious from the version number alone:
+
+| Pinned | Why |
+|---|---|
+| `playwright` (npm) + `mcr.microsoft.com/playwright` (docker) | Version-locked to each other; the `playwright-lockstep` CI job fails if they drift. Dependabot's two ecosystems cannot see each other, so it always proposes half a bump. Move both by hand. |
+| `bullmq` — exact `5.80.2` | 5.81.3 loses job keys and locks mid-processing (`Missing key for job ... moveToFinished`), failing four e2e pipeline tests. Re-test the worker suite before unpinning. |
+| `node` majors | 24 is LTS. 25 unbundled corepack, so `corepack enable` exits 127 in all three Dockerfiles. Patch and minor bumps of the 24 line still arrive. |
+
 ## Capacity planning
 One worker at concurrency 4 sustains ~30–60 runs/min (browser-bound; uptime checks
 ~2–5 s, journeys 10–60 s). Formula: runs/min = Σ(checks / interval). 200 apps × 2 checks
@@ -163,6 +180,21 @@ compose with a Helm chart (api Deployment, worker Deployment + HPA, managed
 Postgres/Redis, artifacts → S3/MinIO — the artifact store is behind one module,
 `apps/worker/src/artifacts.ts`, precisely so this swap stays local).
 
-## CI (backlog, not v1)
-GitHub Actions: pnpm install → typecheck → unit tests → build all three images.
-No registry push required while deploys are `compose up --build` on the host.
+## CI
+
+Three GitHub Actions workflows, all running on push to `main`, on pull requests and
+on demand (Security adds a weekly schedule). See the README for what each covers.
+
+Two things about them are worth knowing before editing:
+
+- **Action references are resolved during "Set up job"**, before any step runs, and a
+  composite action's *own* nested references are resolved too. `trivy-action@v0.28.0`
+  pinned `setup-trivy@v0.2.1`, which was later removed upstream, so all four Trivy
+  jobs failed in a few seconds with no step output at all. If a job dies in "Set up
+  job", check the action refs before anything else.
+- **Dependabot PRs get a read-only `GITHUB_TOKEN`** regardless of the `permissions:`
+  block, so `upload-sarif` cannot write and the job would fail. Those uploads are
+  skipped for `dependabot[bot]`; the scans still run.
+
+Images are built but not pushed by CI — deploys are `compose up --build` on the host.
+`release.yml` is the one that publishes, on a semver tag.
