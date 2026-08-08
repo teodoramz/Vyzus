@@ -29,7 +29,14 @@ describe('uptime executor', () => {
     const result = await executeUptime({
       ...base,
       landingUrl: site.url,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('passed');
     expect(result.errorMessage).toBeNull();
@@ -54,6 +61,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         bodyText: 'false',
         screenshot: 'never',
       },
@@ -78,6 +86,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         selector: '#hero',
         bodyText: 'demo shop',
         screenshot: 'never',
@@ -93,6 +102,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         selector: '#does-not-exist',
         screenshot: 'never',
       },
@@ -108,6 +118,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         bodyText: 'NOT ON THE PAGE',
         screenshot: 'never',
       },
@@ -124,6 +135,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         title: 'Test Site',
         screenshot: 'never',
       },
@@ -138,6 +150,7 @@ describe('uptime executor', () => {
         expectedStatus: 200,
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         title: 'Not The Title',
         screenshot: 'never',
       },
@@ -162,6 +175,7 @@ describe('uptime executor', () => {
             expectedStatus: 200,
             maxDurationMs: 0,
             visualDiffPercent: 0,
+            certExpiryWarningDays: 0,
             screenshot: 'on_failure',
           },
           captureScreenshot: (status: string) => status !== 'passed',
@@ -183,7 +197,14 @@ describe('uptime executor', () => {
       ...base,
       timeoutMs: 3_000,
       landingUrl: `${site.url}slow`,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('timeout');
     expect(result.errorMessage).toContain('timed out');
@@ -197,7 +218,14 @@ describe('uptime executor', () => {
       {
         ...base,
         landingUrl: site.url,
-        config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'always' },
+        config: {
+          mode: 'http',
+          expectedStatus: 200,
+          maxDurationMs: 0,
+          visualDiffPercent: 0,
+          certExpiryWarningDays: 0,
+          screenshot: 'always',
+        },
         captureScreenshot: () => true,
       },
       { store, target: { appId, runId } },
@@ -215,7 +243,14 @@ describe('latency threshold', () => {
       ...base,
       timeoutMs: 15_000,
       landingUrl: `${site.url}/lag`,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 300, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 300,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toMatch(/over the 300 ms limit/);
@@ -230,7 +265,14 @@ describe('latency threshold', () => {
       ...base,
       timeoutMs: 15_000,
       landingUrl: `${site.url}/lag`,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('passed');
     expect(result.errorMessage).toBeNull();
@@ -242,7 +284,14 @@ describe('latency threshold', () => {
       ...base,
       timeoutMs: 15_000,
       landingUrl: site.url,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 60_000, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 60_000,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('passed');
   });
@@ -254,7 +303,14 @@ describe('latency threshold', () => {
       ...base,
       timeoutMs: 15_000,
       landingUrl: `${site.url}/lag`,
-      config: { mode: 'http', expectedStatus: 404, maxDurationMs: 1, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 404,
+        maxDurationMs: 1,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     });
     expect(result.status).toBe('failed');
     expect(result.errorMessage).toMatch(/Expected HTTP 404/);

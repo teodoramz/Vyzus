@@ -37,6 +37,7 @@ function defaultUptimeConfig(): HttpModeConfig {
     mode: 'http',
     maxDurationMs: 0,
     visualDiffPercent: 0,
+    certExpiryWarningDays: 0,
     expectedStatus: 200,
     screenshot: 'on_change',
     screenshotRefreshMinutes: DEFAULT_SCREENSHOT_REFRESH_MINUTES,

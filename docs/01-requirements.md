@@ -19,6 +19,14 @@
     plus the first success afterwards), `on_failure`, or `never`. `on_change`/`on_failure` may also
     set `screenshotRefreshMinutes` so a healthy check refreshes its picture on that cadence
     (default 60 for new checks) instead of showing whatever it looked like at the last incident.
+    `certExpiryWarningDays` (0 = off, the default) fails the check while the site's TLS
+    certificate is still valid but within that many days of expiring. Read from the
+    navigation Chromium already performed (`response.securityDetails()`), so it costs no
+    extra connection and reflects what the browser actually negotiated. Only meaningful
+    for an `https://` landing URL. Previously this existed only on `port` checks, so the
+    most common way to monitor a site said nothing about its certificate until browsers
+    were already refusing it. Both executors now share one rule
+    (`packages/shared/src/cert-expiry.ts`).
     `visualDiffPercent` (0 = off, the default) compares each screenshot with the previous
     stored one for the same check and fails when that percentage of pixels or more differ —
     catching defacement, broken CSS and blank-page deploys that still return HTTP 200 and

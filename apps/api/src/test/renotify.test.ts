@@ -42,7 +42,14 @@ async function seedOpenIncident(openedAt: Date, lastNotifiedAt: Date | null) {
       type: 'uptime',
       name: 'landing',
       intervalMinutes: 5,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
     })
     .returning();
   const [run] = await db

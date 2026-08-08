@@ -29,6 +29,7 @@ Both drive the application's Up/Down status.
 | Text present on page (optional) | fails if `document.body.innerText` doesn't contain it |
 | Page title contains (optional) | fails if `document.title` stops containing it |
 | Screenshot | `Every run`, `On failure and recovery` (default), `On failure only`, or `Never` |
+| Warn before the TLS certificate expires (days) | fails once the cert has this many days or less left; `0` disables it. https:// targets only |
 | Fail if the page looks different by | % of pixels changed vs the previous screenshot. `0` disables it |
 | Fail if slower than | ms; a run returning the expected status but taking longer fails. `0` disables it |
 | Also refresh while healthy | minutes; on a passing run, refresh the stored screenshot once it is older than this. Empty = only capture on failure/recovery |

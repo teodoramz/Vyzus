@@ -174,6 +174,7 @@ export async function seedAppWithCheck(
         screenshot: 'on_failure',
         maxDurationMs: 0,
         visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
         ...uptimeConfig,
       },
       ...checkOverrides,

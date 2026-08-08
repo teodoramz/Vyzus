@@ -464,6 +464,7 @@ describe('applications + checks CRUD', () => {
       expectedStatus: 200,
       maxDurationMs: 0,
       visualDiffPercent: 0,
+      certExpiryWarningDays: 0,
     });
 
     const del = await ctx.app.inject({

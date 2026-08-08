@@ -36,6 +36,7 @@ function defaultHttpConfig(): HttpModeConfig {
     screenshotRefreshMinutes: DEFAULT_SCREENSHOT_REFRESH_MINUTES,
     maxDurationMs: 0,
     visualDiffPercent: 0,
+    certExpiryWarningDays: 0,
   };
 }
 function defaultPortConfig(): PortModeConfig {

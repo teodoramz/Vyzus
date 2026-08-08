@@ -1,5 +1,6 @@
 // Uptime executor (02-architecture §5.1).
 import { errors as playwrightErrors, type BrowserContextOptions, type Page } from 'playwright';
+import { evaluateCertExpiry, certExpiryMessage } from '@vyzus/shared';
 import type { AppAuthConfig, HttpModeConfig, SessionLogin } from '@vyzus/shared';
 import { getBrowser } from '../browser.js';
 import { newStealthContext } from '../browser-context.js';
@@ -148,13 +149,15 @@ export async function executeUptime(
     }
 
     let httpStatus: number | null = null;
+    // Hoisted: the certificate check below reads it after the navigation block.
+    let response: Awaited<ReturnType<Page['goto']>> = null;
     try {
       // `domcontentloaded`, not `load`: the HTTP status (the thing the check
       // actually asserts on) is known as soon as the response arrives, and a
       // heavy page whose last tracking pixel never finishes should not be
       // reported as a navigation timeout. Visual settling is handled by
       // settleForCapture() below, against its own budget.
-      const response = await page.goto(landingUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+      response = await page.goto(landingUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
       httpStatus = response?.status() ?? null;
       // Bounded settle: at most half the check's timeout, capped at 10s, so a
       // slow-but-alive page still gets a usable screenshot without letting a
@@ -205,6 +208,38 @@ export async function executeUptime(
       }
     } else if (httpStatus != null) {
       metrics = { httpStatus };
+    }
+
+    // Certificate expiry, from the navigation Chromium already performed —
+    // no second connection, and no separate TLS client to keep in step with
+    // what the browser actually negotiated. Only an https:// target has one.
+    //
+    // A certificate that has already expired is too late to be useful: by then
+    // the browser is refusing the site and the check has failed for a different
+    // reason. The point is to fail while there is still time to renew.
+    if (response && config.certExpiryWarningDays > 0 && status === 'passed') {
+      const security = await response.securityDetails().catch(() => null);
+      if (security?.validTo) {
+        // Playwright reports these as Unix seconds.
+        const validTo = new Date(security.validTo * 1000);
+        const verdict = evaluateCertExpiry(validTo, config.certExpiryWarningDays);
+        if (metrics) {
+          metrics.certValidTo = validTo.toISOString();
+          metrics.certIssuer = security.issuer ?? null;
+          metrics.certSubject = security.subjectName ?? null;
+          metrics.daysUntilExpiry = verdict.daysUntilExpiry;
+          metrics.certExpiryWarningDays = config.certExpiryWarningDays;
+        }
+        if (verdict.expiringSoon) {
+          status = 'failed';
+          errorMessage = certExpiryMessage(
+            new URL(landingUrl).host,
+            verdict.daysUntilExpiry,
+            validTo,
+            config.certExpiryWarningDays,
+          );
+        }
+      }
     }
 
     // Latency threshold. Measured here, before the screenshot: capturing one is

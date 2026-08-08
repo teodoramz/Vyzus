@@ -3,7 +3,13 @@ import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import { loadConfig } from '../config.js';
-import { evaluateHeartbeat, activeMaintenanceWindow, dueForRenotify } from '@vyzus/shared';
+import {
+  evaluateHeartbeat,
+  activeMaintenanceWindow,
+  dueForRenotify,
+  evaluateCertExpiry,
+  certExpiryMessage,
+} from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
 /** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
@@ -361,5 +367,45 @@ describe('dueForRenotify', () => {
       candidates: [inc('old', '2026-08-08T10:00:00Z', null), inc('fresh', '2026-08-08T11:55:00Z', null)],
     });
     expect(out.map((c) => c.incidentId)).toEqual(['old']);
+  });
+});
+
+describe('evaluateCertExpiry', () => {
+  const now = new Date('2026-08-08T12:00:00Z');
+  const inDays = (d: number) => new Date(now.getTime() + d * 86_400_000);
+
+  it('is off when no threshold is set, however close the expiry', () => {
+    expect(evaluateCertExpiry(inDays(1), 0, now).expiringSoon).toBe(false);
+  });
+
+  it('warns inside the window and stays quiet outside it', () => {
+    expect(evaluateCertExpiry(inDays(5), 14, now).expiringSoon).toBe(true);
+    expect(evaluateCertExpiry(inDays(30), 14, now).expiringSoon).toBe(false);
+  });
+
+  it('is inclusive at exactly the threshold', () => {
+    expect(evaluateCertExpiry(inDays(14), 14, now).expiringSoon).toBe(true);
+  });
+
+  // Floor, not round: 13.6 days left is 13 usable days. Rounding to 14 would
+  // let it slip past a 14-day threshold unnoticed.
+  it('floors partial days rather than rounding', () => {
+    const v = evaluateCertExpiry(new Date(now.getTime() + 13.6 * 86_400_000), 14, now);
+    expect(v.daysUntilExpiry).toBe(13);
+    expect(v.expiringSoon).toBe(true);
+  });
+
+  it('reports an already-expired certificate as negative days', () => {
+    const v = evaluateCertExpiry(inDays(-3), 14, now);
+    expect(v.daysUntilExpiry).toBe(-3);
+    expect(v.expiringSoon).toBe(true);
+  });
+
+  it('phrases the message for expired, today, and upcoming', () => {
+    expect(certExpiryMessage('example.com', -3, inDays(-3), 14)).toMatch(/expired 3 day\(s\) ago/);
+    expect(certExpiryMessage('example.com', 0, inDays(0), 14)).toMatch(/expires today/);
+    expect(certExpiryMessage('example.com:443', 5, inDays(5), 14)).toMatch(
+      /example\.com:443 expires in 5 day\(s\).*threshold is 14/,
+    );
   });
 });

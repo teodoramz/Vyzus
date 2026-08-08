@@ -9,7 +9,7 @@ import net from 'node:net';
 import tls from 'node:tls';
 import dgram from 'node:dgram';
 import dns from 'node:dns/promises';
-import type { PortModeConfig } from '@vyzus/shared';
+import { evaluateCertExpiry, certExpiryMessage, type PortModeConfig } from '@vyzus/shared';
 import { truncateError, type ExecutionResult } from './types.js';
 
 export interface PortInput {
@@ -76,15 +76,6 @@ function checkTcp(config: PortModeConfig, timeoutMs: number, startedAt: number):
  * `authorized`/`authorizationError` are recorded in metrics without failing
  * the check.
  */
-/** Says how long is left and until when, so the alert is actionable without opening the run. */
-function certExpiryMessage(config: PortModeConfig, daysLeft: number, validTo: string | null): string {
-  const target = `${config.host}:${config.port}`;
-  const until = validTo ? ` (valid until ${validTo})` : '';
-  if (daysLeft < 0) return `TLS certificate for ${target} expired ${-daysLeft} day(s) ago${until}`;
-  if (daysLeft === 0) return `TLS certificate for ${target} expires today${until}`;
-  return `TLS certificate for ${target} expires in ${daysLeft} day(s)${until} — warning threshold is ${config.certExpiryWarningDays} day(s)`;
-}
-
 function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number): Promise<ExecutionResult> {
   return new Promise((resolve) => {
     let settled = false;
@@ -113,10 +104,11 @@ function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number):
       const hasCert = cert && Object.keys(cert).length > 0;
       // Floor, not round: a certificate with 13.6 days left has 13 usable days,
       // and reporting 14 would let it slip past a 14-day threshold unnoticed.
-      const daysUntilExpiry =
-        hasCert && cert.valid_to ? Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000) : null;
       const warnDays = config.certExpiryWarningDays;
-      const expiringSoon = warnDays > 0 && daysUntilExpiry !== null && daysUntilExpiry <= warnDays;
+      const validTo = hasCert && cert.valid_to ? new Date(cert.valid_to) : null;
+      const verdict = validTo ? evaluateCertExpiry(validTo, warnDays) : null;
+      const daysUntilExpiry = verdict?.daysUntilExpiry ?? null;
+      const expiringSoon = verdict?.expiringSoon ?? false;
       finish({
         // The handshake succeeded; failing here is a deliberate early warning so
         // the renewal happens before the certificate actually lapses.
@@ -137,7 +129,9 @@ function checkTls(config: PortModeConfig, timeoutMs: number, startedAt: number):
           authorized: socket.authorized,
           authorizationError: socket.authorized ? null : String(socket.authorizationError ?? 'unknown'),
         },
-        errorMessage: expiringSoon ? certExpiryMessage(config, daysUntilExpiry, cert.valid_to ?? null) : null,
+        errorMessage: expiringSoon
+          ? certExpiryMessage(`${config.host}:${config.port}`, daysUntilExpiry!, validTo, warnDays)
+          : null,
         screenshotPath: null,
         tracePath: null,
       });

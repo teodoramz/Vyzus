@@ -184,6 +184,32 @@ export function HttpModeConfigFields({
             : 'Off — a defaced or blank page that still returns 200 and keeps its selectors will pass.'}
         </p>
       </div>
+
+      <div>
+        <label htmlFor="httpCertExpiry" className={labelClass}>
+          Warn before the TLS certificate expires (days)
+        </label>
+        <div className="flex items-center gap-2">
+          <input
+            id="httpCertExpiry"
+            type="number"
+            min={0}
+            max={365}
+            placeholder="off"
+            value={config.certExpiryWarningDays || ''}
+            onChange={(e) =>
+              onChange({ ...config, certExpiryWarningDays: e.target.value ? Number(e.target.value) : 0 })
+            }
+            className={`${inputClass} max-w-32`}
+          />
+          <span className="text-sm text-slate-500 dark:text-zinc-400">days</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+          {config.certExpiryWarningDays > 0
+            ? `Fails once the certificate has ${config.certExpiryWarningDays} day(s) or less left, so there is still time to renew. Read from the page load itself — no extra connection. Only applies to an https:// landing URL.`
+            : 'Off — the certificate only affects this check once it has already expired and the browser starts refusing the site, which is too late to act on.'}
+        </p>
+      </div>
     </div>
   );
 }

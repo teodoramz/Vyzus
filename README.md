@@ -17,7 +17,7 @@ response-time metrics, screenshots, incident history and alerting.
   - **Uptime check**, in either of two modes:
     - `http` — loads the page in a real browser, asserts HTTP status / CSS selector /
       body text / page title, records timing metrics (TTFB, DOMContentLoaded, full
-      load) and takes a screenshot.
+      load), warns before the TLS certificate expires, and takes a screenshot.
     - `port` — a raw TCP or UDP reachability probe against any host and port, with
       one-click presets for common services and an optional forced IPv4/IPv6 family.
       TCP ports can additionally perform a **TLS handshake and validate the

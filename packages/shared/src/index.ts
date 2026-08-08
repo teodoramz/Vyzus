@@ -6,4 +6,5 @@ export * from './heartbeat.js';
 export * from './maintenance.js';
 export * from './renotify.js';
 export * from './push.js';
+export * from './cert-expiry.js';
 export * from './schemas/index.js';

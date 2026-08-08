@@ -55,7 +55,14 @@ async function seed(opts: { intervalMinutes?: number; enabled?: boolean; created
       name: 'landing',
       intervalMinutes: opts.intervalMinutes ?? 5,
       enabled: opts.enabled ?? true,
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'never' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'never',
+      },
       ...(opts.createdAt ? { createdAt: opts.createdAt } : {}),
     })
     .returning();

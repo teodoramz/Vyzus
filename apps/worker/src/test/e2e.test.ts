@@ -339,7 +339,12 @@ describe('visual regression', () => {
   }, 120_000);
 
   it('never fails on visual change when the threshold is off', async () => {
-    const { check } = await seedAppWithCheck(handle, site.url, {}, { screenshot: 'always', visualDiffPercent: 0 });
+    const { check } = await seedAppWithCheck(
+      handle,
+      site.url,
+      {},
+      { screenshot: 'always', visualDiffPercent: 0, certExpiryWarningDays: 0 },
+    );
     site.setRepainted(false);
     const a = randomUUID();
     await runJob(CHECK_JOB_NAMES.manual, { checkId: check.id, trigger: 'manual', runId: a });

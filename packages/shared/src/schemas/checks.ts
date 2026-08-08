@@ -67,6 +67,15 @@ export const httpModeConfigSchema = z
     // `on_change`/`on_failure` with a refresh cadence); with nothing to compare
     // against, the check simply passes.
     visualDiffPercent: z.number().min(0).max(100).default(0),
+    // Fail while the site's TLS certificate is still valid but within this many
+    // days of expiring. 0 disables it, which is the default.
+    //
+    // Read from the navigation Chromium already performed
+    // (`response.securityDetails()`), so this costs no extra connection. Only
+    // meaningful for an https:// landing URL; ignored otherwise. Without it the
+    // most common way to monitor a site says nothing about its certificate
+    // until browsers are already refusing it.
+    certExpiryWarningDays: z.number().int().min(0).max(365).default(0),
   })
   .strict();
 export type HttpModeConfig = z.infer<typeof httpModeConfigSchema>;

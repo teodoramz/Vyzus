@@ -47,7 +47,14 @@ async function makeApp(name: string, lastStatus: 'passed' | 'failed' | null, ena
     enabled,
     lastStatus,
     lastRunAt: lastStatus ? new Date() : null,
-    config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'on_failure' },
+    config: {
+      mode: 'http',
+      expectedStatus: 200,
+      maxDurationMs: 0,
+      visualDiffPercent: 0,
+      certExpiryWarningDays: 0,
+      screenshot: 'on_failure',
+    },
   });
   return app!;
 }
@@ -62,7 +69,14 @@ describe('GET /stats', () => {
       intervalMinutes: 5,
       lastStatus: 'failed',
       lastRunAt: new Date(),
-      config: { mode: 'http', expectedStatus: 200, maxDurationMs: 0, visualDiffPercent: 0, screenshot: 'on_failure' },
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+        screenshot: 'on_failure',
+      },
     });
 
     const res = await ctx.app.inject({ method: 'GET', url: '/api/v1/stats', headers: authHeader(token) });

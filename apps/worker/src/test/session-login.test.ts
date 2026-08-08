@@ -24,6 +24,7 @@ const httpConfig = (over: Record<string, unknown> = {}) => ({
   expectedStatus: 200,
   maxDurationMs: 0,
   visualDiffPercent: 0,
+  certExpiryWarningDays: 0,
   screenshot: 'never' as const,
   ...over,
 });
