@@ -12,9 +12,10 @@ import type {
   HttpModeConfig,
   JourneyConfig,
   PortModeConfig,
+  PushConfig,
   UptimeMode,
 } from '@vyzus/shared';
-import { DEFAULT_SCREENSHOT_REFRESH_MINUTES } from '@vyzus/shared';
+import { DEFAULT_SCREENSHOT_REFRESH_MINUTES, DEFAULT_PUSH_GRACE_MINUTES } from '@vyzus/shared';
 import { checksApi, appsApi } from '../api/endpoints';
 import { ApiError } from '../api/http';
 import { HttpModeConfigFields } from '../components/HttpModeConfigFields';
@@ -24,7 +25,7 @@ import { DryRunResult } from '../components/DryRunResult';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../components/formFields';
 
-const TYPE_LABEL: Record<CheckType, string> = { uptime: 'Uptime', journey: 'Journey' };
+const TYPE_LABEL: Record<CheckType, string> = { uptime: 'Uptime', journey: 'Journey', push: 'Heartbeat (push)' };
 const UPTIME_MODE_LABEL: Record<UptimeMode, string> = { http: 'HTTP(S) service', port: 'TCP/UDP port' };
 
 function defaultHttpConfig(): HttpModeConfig {
@@ -48,6 +49,15 @@ function defaultPortConfig(): PortModeConfig {
     allowInsecureCert: false,
     certExpiryWarningDays: 0,
   };
+}
+/** 32 bytes of CSPRNG output, hex — the only credential on the ping endpoint. */
+function newPushToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+function defaultPushConfig(): PushConfig {
+  return { token: newPushToken(), graceMinutes: DEFAULT_PUSH_GRACE_MINUTES };
 }
 function defaultJourneyConfig(): JourneyConfig {
   return { specSource: DEFAULT_JOURNEY_SPEC };
@@ -76,6 +86,7 @@ export function CheckEditor(): JSX.Element {
   const [httpConfig, setHttpConfig] = useState<HttpModeConfig>(defaultHttpConfig());
   const [portConfig, setPortConfig] = useState<PortModeConfig>(defaultPortConfig());
   const [journeyConfig, setJourneyConfig] = useState<JourneyConfig>(defaultJourneyConfig());
+  const [pushConfig, setPushConfig] = useState<PushConfig>(defaultPushConfig());
   const [error, setError] = useState<string | null>(null);
   const [dryRunResult, setDryRunResult] = useState<DryRunResultType | null>(null);
 
@@ -109,6 +120,8 @@ export function CheckEditor(): JSX.Element {
         setUptimeMode(config.mode);
         if (config.mode === 'http') setHttpConfig(config);
         else setPortConfig(config);
+      } else if (existing.data.type === 'push') {
+        setPushConfig(existing.data.config as PushConfig);
       } else {
         setJourneyConfig(existing.data.config as JourneyConfig);
       }
@@ -138,6 +151,7 @@ export function CheckEditor(): JSX.Element {
     if (type === 'uptime') {
       return { ...base, type: 'uptime', config: uptimeMode === 'http' ? httpConfig : portConfig } as CreateCheckBody;
     }
+    if (type === 'push') return { ...base, type: 'push', config: pushConfig } as CreateCheckBody;
     return { ...base, type: 'journey', config: journeyConfig } as CreateCheckBody;
   }
 
@@ -311,6 +325,58 @@ export function CheckEditor(): JSX.Element {
         {type === 'uptime' && uptimeMode === 'port' && (
           <PortConfigFields config={portConfig} onChange={setPortConfig} />
         )}
+        {type === 'push' && (
+          <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-white/10">
+            <p className="text-xs text-slate-500 dark:text-zinc-400">
+              Vyzus does not reach out for this check — the job reports in. Have it request the URL below on success.
+              The check fails when nothing arrives within its interval plus the grace allowance, which is how a cron job
+              that silently stopped becomes visible.
+            </p>
+            <div>
+              <label htmlFor="push-url" className={labelClass}>
+                Ping URL
+              </label>
+              <input
+                id="push-url"
+                readOnly
+                value={`${window.location.origin}/api/v1/push/${pushConfig.token}`}
+                onFocus={(e) => e.currentTarget.select()}
+                className={`${inputClass} font-mono text-xs`}
+              />
+              <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+                The token is the only credential — treat it as a secret. Regenerate it to revoke.
+              </p>
+            </div>
+            <div className="flex items-end gap-2">
+              <div>
+                <label htmlFor="push-grace" className={labelClass}>
+                  Grace (minutes)
+                </label>
+                <input
+                  id="push-grace"
+                  type="number"
+                  min={0}
+                  max={1440}
+                  value={pushConfig.graceMinutes}
+                  onChange={(e) => setPushConfig({ ...pushConfig, graceMinutes: Number(e.target.value) || 0 })}
+                  className={`${inputClass} max-w-28`}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => setPushConfig({ ...pushConfig, token: newPushToken() })}
+                className={secondaryButtonClass}
+              >
+                Regenerate token
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 dark:text-zinc-500">
+              A job on a {intervalMinutes}-minute schedule will not land exactly on the mark, so it is allowed{' '}
+              {intervalMinutes + pushConfig.graceMinutes} minutes total before a missing ping counts as a failure.
+            </p>
+          </div>
+        )}
+
         {type === 'journey' && <JourneyConfigFields config={journeyConfig} onChange={setJourneyConfig} />}
       </div>
 

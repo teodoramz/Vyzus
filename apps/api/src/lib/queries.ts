@@ -47,7 +47,7 @@ export async function availabilityForChecks(db: Database, checkIds: string[], si
  * - DEGRADED — anything else: some failing, some passing
  */
 export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppStatus {
-  const relevant = checks.filter((c) => c.type === 'uptime' || c.type === 'journey');
+  const relevant = checks.filter((c) => c.type === 'uptime' || c.type === 'journey' || c.type === 'push');
   if (relevant.length === 0) return 'UNKNOWN';
 
   const enabled = relevant.filter((c) => c.enabled);
@@ -61,6 +61,10 @@ export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppSta
 
   // Only liveness checks can express "unreachable". If every one of them has
   // run and every one is failing, the app is genuinely down.
+  //
+  // `push` is deliberately not liveness: a stalled cron job means a background
+  // task stopped, not that the site is unreachable. Like a failing journey it
+  // degrades the application without ever marking it DOWN.
   const liveness = withStatus.filter((c) => c.type === 'uptime');
   if (liveness.length > 0 && liveness.every((c) => c.lastStatus !== 'passed')) return 'DOWN';
 

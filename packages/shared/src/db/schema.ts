@@ -19,13 +19,13 @@ import {
   check,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import type { UptimeConfig, JourneyConfig } from '../schemas/checks.js';
+import type { UptimeConfig, JourneyConfig, PushConfig } from '../schemas/checks.js';
 import type { ChannelConfig } from '../schemas/channels.js';
-import { ALERT_EVENTS, CHANNEL_TYPES } from '../constants.js';
+import { ALERT_EVENTS, CHANNEL_TYPES, CHECK_TYPES } from '../constants.js';
 
 // ---- Enums ----
 export const userRoleEnum = pgEnum('user_role', ['admin', 'editor', 'viewer']);
-export const checkTypeEnum = pgEnum('check_type', ['uptime', 'journey']);
+export const checkTypeEnum = pgEnum('check_type', CHECK_TYPES);
 export const runStatusEnum = pgEnum('run_status', ['passed', 'failed', 'error', 'timeout']);
 export const runTriggerEnum = pgEnum('run_trigger', ['schedule', 'manual', 'screenshot']);
 export const channelTypeEnum = pgEnum('channel_type', CHANNEL_TYPES);
@@ -83,7 +83,7 @@ export const userAppAccess = pgTable(
 );
 
 // ---- checks ----
-export type CheckConfigJson = UptimeConfig | JourneyConfig;
+export type CheckConfigJson = UptimeConfig | JourneyConfig | PushConfig;
 
 export const checks = pgTable(
   'checks',
@@ -112,6 +112,11 @@ export const checks = pgTable(
     // which existed only to supersede a streak's screenshot. Every screenshot
     // is kept now, so there is nothing to point at.)
     lastScreenshotAt: timestamp('last_screenshot_at', { withTimezone: true }),
+    // `push` checks only: when the monitored job last reported in. The check's
+    // scheduled run compares this against its interval + grace. A column rather
+    // than a run row per ping, because a job pinging every minute would
+    // otherwise write a run per minute regardless of the check's interval.
+    lastPingAt: timestamp('last_ping_at', { withTimezone: true }),
     createdAt,
     updatedAt,
   },

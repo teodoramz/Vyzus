@@ -8,6 +8,7 @@ import {
   enqueuedRunResponseSchema,
   uptimeConfigSchema,
   journeyConfigSchema,
+  pushConfigSchema,
   idParamSchema,
   appIdParamSchema,
   dryRunBodySchema,
@@ -23,6 +24,7 @@ import { assertAppAccess } from '../lib/access.js';
 const CONFIG_SCHEMA_BY_TYPE = {
   uptime: uptimeConfigSchema,
   journey: journeyConfigSchema,
+  push: pushConfigSchema,
 } as const;
 
 function validateConfigForType(type: CheckType, config: unknown): CheckConfigJson {

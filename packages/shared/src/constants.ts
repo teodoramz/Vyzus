@@ -4,7 +4,10 @@
 export const USER_ROLES = ['admin', 'editor', 'viewer'] as const;
 export type UserRole = (typeof USER_ROLES)[number];
 
-export const CHECK_TYPES = ['uptime', 'journey'] as const;
+// `push` inverts the model: Vyzus does not reach out to the target, the target
+// reports in. Its scheduled "run" asks "has a ping arrived recently?", so the
+// scheduler, run pipeline, incidents and alerts all work unchanged.
+export const CHECK_TYPES = ['uptime', 'journey', 'push'] as const;
 export type CheckType = (typeof CHECK_TYPES)[number];
 
 /** An `uptime` check's mode — what it actually probes. 'http' is the
@@ -114,6 +117,13 @@ export const HEARTBEAT_EVERY_MS = 60_000;
  * that opened at 02:00 is only ever announced once.
  */
 export const DEFAULT_RENOTIFY_MINUTES = 0;
+
+/**
+ * Slack a push check is given beyond its interval before a missing ping counts
+ * as a failure. A cron job that runs every 5 minutes will not land exactly on
+ * the 5-minute mark, and without slack every such check would flap.
+ */
+export const DEFAULT_PUSH_GRACE_MINUTES = 2;
 
 export const DEFAULT_RETENTION = {
   runsDays: 90,

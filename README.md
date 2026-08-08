@@ -24,6 +24,9 @@ response-time metrics, screenshots, incident history and alerting.
       certificate** (trust chain, expiry, hostname), warn a configurable number of days
       before that certificate expires, and an opt-in escape hatch for deliberately
       self-signed internal services.
+  - **Heartbeat (push)** — for jobs Vyzus cannot reach: a cron job, backup script or
+    host behind NAT `curl`s a token URL on success, and the check fails when nothing
+    arrives within its interval plus a grace allowance.
   - **User journey** — a full Playwright test (recorded with `playwright codegen` or
     hand-written) uploaded/edited in the dashboard, simulating a real user flow
     (login, search, checkout, …). A failing journey never marks the application

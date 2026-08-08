@@ -52,6 +52,7 @@ permission model.
 | last_status | enum `passed`\|`failed`\|`error`\|`timeout` NULL | denormalized for the grid |
 | last_run_at | timestamptz NULL | denormalized |
 | sort_order | int DEFAULT 0 | user-controlled tab / "run all" order — see `PUT /apps/:id/checks/order` |
+| last_ping_at | timestamptz NULL | `push` checks only: when the monitored job last reported in. A column rather than a run per ping, since a job pinging every minute would otherwise write a run per minute regardless of the check's interval |
 | last_screenshot_at | timestamptz NULL | when a screenshot was last stored — drives `screenshotRefreshMinutes`. A column rather than a `MAX()` over runs, so the cadence stays one indexed read on the hot path. |
 | created_at / updated_at | timestamptz | |
 

@@ -9,6 +9,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   DEFAULT_FAILURE_THRESHOLD,
   JOURNEY_SPEC_MAX_BYTES,
+  DEFAULT_PUSH_GRACE_MINUTES,
 } from '../constants.js';
 import { isoTimestamp, uuidSchema } from './common.js';
 
@@ -125,6 +126,28 @@ export const uptimeConfigSchema = z.preprocess(
 );
 export type UptimeConfig = z.infer<typeof uptimeConfigSchema>;
 
+/**
+ * `push` — a heartbeat the monitored job sends to Vyzus, rather than a target
+ * Vyzus reaches out to. Covers everything not reachable from the monitor: cron
+ * jobs, backup scripts, batch imports, hosts behind NAT.
+ */
+export const pushConfigSchema = z
+  .object({
+    /**
+     * Opaque secret in the ping URL. This is the only credential on the
+     * endpoint — it is necessarily unauthenticated, because the whole point is
+     * that a shell script can curl it with no setup.
+     */
+    token: z.string().min(16).max(128),
+    /**
+     * Extra slack beyond the check's interval before a missing ping fails. A
+     * job on a 5-minute cron will not land exactly on the mark.
+     */
+    graceMinutes: z.number().int().min(0).max(1440).default(DEFAULT_PUSH_GRACE_MINUTES),
+  })
+  .strict();
+export type PushConfig = z.infer<typeof pushConfigSchema>;
+
 export const journeyConfigSchema = z
   .object({
     specSource: z
@@ -143,6 +166,7 @@ export type JourneyConfig = z.infer<typeof journeyConfigSchema>;
 export const checkConfigSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('uptime'), config: uptimeConfigSchema }),
   z.object({ type: z.literal('journey'), config: journeyConfigSchema }),
+  z.object({ type: z.literal('push'), config: pushConfigSchema }),
 ]);
 export type CheckConfig = z.infer<typeof checkConfigSchema>;
 
@@ -173,7 +197,7 @@ export const updateCheckBodySchema = z
     failureThreshold: z.number().int().min(1).max(20).optional(),
     enabled: z.boolean().optional(),
     type: checkTypeSchema.optional(),
-    config: z.union([uptimeConfigSchema, journeyConfigSchema]).optional(),
+    config: z.union([uptimeConfigSchema, journeyConfigSchema, pushConfigSchema]).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'Empty update' })
   .refine((v) => !(v.type !== undefined && v.config === undefined), {
@@ -192,7 +216,7 @@ export const checkSchema = z.object({
   timeoutMs: z.number().int(),
   failureThreshold: z.number().int(),
   enabled: z.boolean(),
-  config: z.union([uptimeConfigSchema, journeyConfigSchema]),
+  config: z.union([uptimeConfigSchema, journeyConfigSchema, pushConfigSchema]),
   consecutiveFailures: z.number().int(),
   lastStatus: runStatusSchema.nullable(),
   lastRunAt: isoTimestamp.nullable(),

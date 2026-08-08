@@ -114,6 +114,23 @@
     misleading. Credentials never appear in error messages or metrics.
   - The login is given at most half the check timeout, so a hanging login cannot
     consume the whole budget.
+- FR-2.5 **Push (heartbeat) check**: the monitored job reports in, rather than Vyzus
+  reaching out. Covers everything unreachable *from* the monitor — cron jobs, backup
+  scripts, batch imports, hosts behind NAT.
+  - `GET`/`POST /api/v1/push/:token` records the ping. Necessarily unauthenticated:
+    the point is that a shell script can `curl` it with no credential plumbing. The
+    token (32 bytes of CSPRNG output) is the credential, scoped to one check, revoked
+    by regenerating it. Unknown tokens 404 without revealing whether they ever existed.
+  - Health is decided by the check's own scheduled run, not by the endpoint: the run
+    asks "has a ping arrived within interval + `graceMinutes`?". Modelling it as an
+    ordinary run is why incidents, alerts, availability, run history and the WS feed
+    need no special case for this type.
+  - `graceMinutes` exists because a job on a 5-minute cron never lands exactly on the
+    mark; without slack every such check would flap.
+  - A check that has never been pinged measures from its creation, so a new check does
+    not fail before its job has had a chance to run once.
+  - Failing `push` checks **degrade** an application, never mark it `DOWN`: a stalled
+    background job does not mean the site is unreachable.
 - FR-2.3 **Journey check**:
   - The test body is a Playwright TypeScript snippet uploaded or pasted/edited in the dashboard (Monaco editor). Users record it locally with `npx playwright codegen <url>`.
   - The platform wraps the snippet in its own runner harness (see 02-architecture §5.2); the snippet exports steps using the standard `page` API.

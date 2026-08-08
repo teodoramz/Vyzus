@@ -19,6 +19,7 @@ import {
   dryRunJobPayloadSchema,
   uptimeConfigSchema,
   journeyConfigSchema,
+  pushConfigSchema,
   shouldCaptureScreenshot,
   type AlertJobPayload,
   type AppAuthConfig,
@@ -36,6 +37,7 @@ import { comparePng, type DiffOutcome } from './visual-diff.js';
 import { executeUptime } from './executors/uptime.js';
 import { executeJourney } from './executors/journey.js';
 import { executePort } from './executors/port.js';
+import { executePush } from './executors/push.js';
 import type { ExecutionResult } from './executors/types.js';
 import { evaluateIncident } from './incidents.js';
 
@@ -171,7 +173,17 @@ export function createProcessor(deps: ProcessorDeps): {
   }
 
   async function execute(
-    check: Pick<CheckRow, 'type' | 'config' | 'timeoutMs' | 'lastStatus' | 'lastScreenshotAt'>,
+    check: Pick<
+      CheckRow,
+      | 'type'
+      | 'config'
+      | 'timeoutMs'
+      | 'lastStatus'
+      | 'lastScreenshotAt'
+      | 'intervalMinutes'
+      | 'lastPingAt'
+      | 'createdAt'
+    >,
     app: Pick<ApplicationRow, 'id' | 'landingUrl'>,
     authConfig: AppAuthConfig | null,
     trigger: RunTrigger,
@@ -208,6 +220,18 @@ export function createProcessor(deps: ProcessorDeps): {
         artifacts,
       );
     }
+    if (check.type === 'push') {
+      // No network call: the target reports in, so the "run" is a question
+      // about time. Everything downstream — incidents, alerts, availability —
+      // then works with no special case for this type.
+      return executePush({
+        config: pushConfigSchema.parse(check.config),
+        intervalMinutes: check.intervalMinutes,
+        lastPingAt: check.lastPingAt,
+        createdAt: check.createdAt,
+      });
+    }
+
     const journeyConfig = journeyConfigSchema.parse(check.config);
     return executeJourney({ config: journeyConfig, timeoutMs: check.timeoutMs }, artifacts);
   }
@@ -232,6 +256,11 @@ export function createProcessor(deps: ProcessorDeps): {
           // A dry run has no persisted check, and stores nothing.
           lastStatus: null,
           lastScreenshotAt: null,
+          // Push fields: a dry run has never received a ping and was "created"
+          // now, so it reports the honest answer — not yet overdue.
+          intervalMinutes: 1,
+          lastPingAt: null,
+          createdAt: new Date(),
         },
         app,
         decryptAuthConfig(app),
