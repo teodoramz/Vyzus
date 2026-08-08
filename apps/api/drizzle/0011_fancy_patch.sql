@@ -1,0 +1,1 @@
+ALTER TABLE "incidents" ADD COLUMN "last_notified_at" timestamp with time zone;

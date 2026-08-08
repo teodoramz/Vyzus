@@ -9,6 +9,7 @@ const KEY_FOR = {
   screenshotsDays: SETTINGS_KEYS.screenshotsDays,
   tracesDays: SETTINGS_KEYS.tracesDays,
   heartbeatStallMinutes: SETTINGS_KEYS.heartbeatStallMinutes,
+  renotifyMinutes: SETTINGS_KEYS.renotifyMinutes,
 } as const;
 
 export const settingsRoutes: FastifyPluginAsyncZod = async (app) => {

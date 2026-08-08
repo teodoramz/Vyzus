@@ -129,6 +129,7 @@ partial `(check_id) WHERE status <> 'passed'` — failure filtering.
 | opened_at | timestamptz NOT NULL | |
 | resolved_at | timestamptz NULL | NULL = ongoing |
 | opening_run_id | uuid FK → runs ON DELETE SET NULL | first failing run past threshold |
+| last_notified_at | timestamptz NULL | when a notification for this incident last went out (initial alert or reminder); drives `alerts.renotify_minutes`. NULL for rows predating the column, which fall back to `opened_at` |
 | resolving_run_id | uuid FK → runs ON DELETE SET NULL | |
 
 Partial unique index `(check_id) WHERE resolved_at IS NULL` — max one open incident per check.

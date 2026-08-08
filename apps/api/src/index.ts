@@ -12,6 +12,7 @@ import { BullMqSchedulerService } from './services/scheduler.js';
 import { startAlerter } from './services/alerter.js';
 import { startRetentionWorker } from './services/retention.js';
 import { createAlertsQueue, runHeartbeat } from './services/heartbeat.js';
+import { runRenotify } from './services/renotify.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -53,6 +54,9 @@ async function main(): Promise<void> {
     log,
     onHeartbeat: async () => {
       await runHeartbeat(dbHandle.db, heartbeatAlerts, log);
+      // Same tick: both answer "given the time now, what should have been said
+      // by now". Sequential so a slow heartbeat cannot overlap a reminder pass.
+      await runRenotify(dbHandle.db, heartbeatAlerts, log);
     },
   });
 

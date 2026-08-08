@@ -7,6 +7,8 @@ export const settingsSchema = z.object({
   tracesDays: z.number().int().min(1).max(3650),
   /** Dead-man's switch threshold in minutes; 0 disables it. */
   heartbeatStallMinutes: z.number().int().min(0).max(1440),
+  /** Re-alert an incident that is still open, every N minutes; 0 disables. */
+  renotifyMinutes: z.number().int().min(0).max(1440),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 
@@ -16,6 +18,7 @@ export const updateSettingsBodySchema = z
     screenshotsDays: z.number().int().min(1).max(3650).optional(),
     tracesDays: z.number().int().min(1).max(3650).optional(),
     heartbeatStallMinutes: z.number().int().min(0).max(1440).optional(),
+    renotifyMinutes: z.number().int().min(0).max(1440).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'Empty update' });
 export type UpdateSettingsBody = z.infer<typeof updateSettingsBodySchema>;

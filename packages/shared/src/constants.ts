@@ -79,6 +79,7 @@ export const SETTINGS_KEYS = {
   screenshotsDays: 'retention.screenshots_days',
   tracesDays: 'retention.traces_days',
   heartbeatStallMinutes: 'heartbeat.stall_minutes',
+  renotifyMinutes: 'alerts.renotify_minutes',
 } as const;
 
 /**
@@ -103,6 +104,16 @@ export const HEARTBEAT_INTERVAL_MULTIPLE = 2;
 
 /** How often the heartbeat evaluates. Cheap: two indexed aggregates. */
 export const HEARTBEAT_EVERY_MS = 60_000;
+
+/**
+ * Re-notify cadence for an incident that is still open, in minutes. 0 disables
+ * it, which is the default — turning it on by fiat would start sending repeat
+ * alerts to channels nobody re-tuned for it.
+ *
+ * A one-shot alert is easy to miss in a busy channel; without this, an outage
+ * that opened at 02:00 is only ever announced once.
+ */
+export const DEFAULT_RENOTIFY_MINUTES = 0;
 
 export const DEFAULT_RETENTION = {
   runsDays: 90,

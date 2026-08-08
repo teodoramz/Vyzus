@@ -18,6 +18,7 @@ export function Settings(): JSX.Element {
   const [screenshotsDays, setScreenshotsDays] = useState(30);
   const [tracesDays, setTracesDays] = useState(14);
   const [heartbeatStallMinutes, setHeartbeatStallMinutes] = useState(15);
+  const [renotifyMinutes, setRenotifyMinutes] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -27,11 +28,13 @@ export function Settings(): JSX.Element {
       setScreenshotsDays(data.screenshotsDays);
       setTracesDays(data.tracesDays);
       setHeartbeatStallMinutes(data.heartbeatStallMinutes);
+      setRenotifyMinutes(data.renotifyMinutes);
     }
   }, [data]);
 
   const save = useMutation({
-    mutationFn: () => settingsApi.update({ runsDays, screenshotsDays, tracesDays, heartbeatStallMinutes }),
+    mutationFn: () =>
+      settingsApi.update({ runsDays, screenshotsDays, tracesDays, heartbeatStallMinutes, renotifyMinutes }),
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['settings'] });
       setSaved(true);
@@ -130,6 +133,27 @@ export function Settings(): JSX.Element {
               {heartbeatStallMinutes > 0
                 ? 'If no check completes anywhere in this window, Vyzus alerts that its own monitoring has stopped — the failure a dead worker cannot report itself. Raised automatically to twice your shortest check interval when that is longer. 0 disables it.'
                 : 'Off — if the worker dies, checks stop silently and the dashboard keeps showing the last known status indefinitely.'}
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="renotifyMinutes" className={labelClass}>
+              Repeat alerts while still down (minutes)
+            </label>
+            <input
+              id="renotifyMinutes"
+              type="number"
+              min={0}
+              max={1440}
+              disabled={readOnly}
+              value={renotifyMinutes}
+              onChange={(e) => setRenotifyMinutes(Number(e.target.value))}
+              className={inputClass}
+            />
+            <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+              {renotifyMinutes > 0
+                ? `An incident that is still open is re-announced every ${renotifyMinutes} minute(s) until it resolves. Reminders go through the same path as the original alert, so an active maintenance window suppresses them too.`
+                : 'Off — each incident is announced once when it opens. A single message in a busy channel is easy to miss.'}
             </p>
           </div>
 

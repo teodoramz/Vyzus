@@ -3,7 +3,7 @@ import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import { loadConfig } from '../config.js';
-import { evaluateHeartbeat, activeMaintenanceWindow } from '@vyzus/shared';
+import { evaluateHeartbeat, activeMaintenanceWindow, dueForRenotify } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
 /** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
@@ -299,5 +299,67 @@ describe('activeMaintenanceWindow', () => {
     const windows = [w(APP, '2026-08-07T01:00:00Z', '2026-08-07T02:00:00Z')];
     expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T00:59:59Z'))).toBeNull();
     expect(activeMaintenanceWindow(windows, APP, at('2026-08-07T03:00:00Z'))).toBeNull();
+  });
+});
+
+describe('dueForRenotify', () => {
+  const now = new Date('2026-08-08T12:00:00Z');
+  const at = (iso: string) => new Date(iso);
+  const inc = (id: string, openedAt: string, lastNotifiedAt: string | null) => ({
+    incidentId: id,
+    openedAt: at(openedAt),
+    lastNotifiedAt: lastNotifiedAt ? at(lastNotifiedAt) : null,
+  });
+
+  it('is off when the cadence is 0, however old the incident', () => {
+    const out = dueForRenotify({
+      now,
+      renotifyMinutes: 0,
+      candidates: [inc('a', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z')],
+    });
+    expect(out).toEqual([]);
+  });
+
+  it('picks incidents whose last notification is older than the cadence', () => {
+    const out = dueForRenotify({
+      now,
+      renotifyMinutes: 30,
+      candidates: [
+        inc('due', '2026-08-08T10:00:00Z', '2026-08-08T11:00:00Z'), // 60m ago
+        inc('recent', '2026-08-08T10:00:00Z', '2026-08-08T11:50:00Z'), // 10m ago
+      ],
+    });
+    expect(out.map((c) => c.incidentId)).toEqual(['due']);
+  });
+
+  it('is inclusive at exactly the cadence boundary', () => {
+    const out = dueForRenotify({
+      now,
+      renotifyMinutes: 30,
+      candidates: [inc('a', '2026-08-08T10:00:00Z', '2026-08-08T11:30:00Z')],
+    });
+    expect(out).toHaveLength(1);
+  });
+
+  // Measured from the last notification, not from openedAt — otherwise an
+  // incident whose first alert was delayed would fire a burst of catch-up
+  // reminders the moment the cadence was enabled.
+  it('measures from the last notification, not from when it opened', () => {
+    const out = dueForRenotify({
+      now,
+      renotifyMinutes: 30,
+      candidates: [inc('a', '2026-08-01T00:00:00Z', '2026-08-08T11:55:00Z')],
+    });
+    expect(out).toEqual([]);
+  });
+
+  // Rows predating the column have no notification timestamp.
+  it('falls back to openedAt when nothing has been notified yet', () => {
+    const out = dueForRenotify({
+      now,
+      renotifyMinutes: 30,
+      candidates: [inc('old', '2026-08-08T10:00:00Z', null), inc('fresh', '2026-08-08T11:55:00Z', null)],
+    });
+    expect(out.map((c) => c.incidentId)).toEqual(['old']);
   });
 });

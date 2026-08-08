@@ -158,6 +158,11 @@ export const incidents = pgTable(
     resolvedAt: timestamp('resolved_at', { withTimezone: true }),
     openingRunId: uuid('opening_run_id').references(() => runs.id, { onDelete: 'set null' }),
     resolvingRunId: uuid('resolving_run_id').references(() => runs.id, { onDelete: 'set null' }),
+    // When a notification for this incident last went out — the initial `down`
+    // alert or a reminder. Drives the "still down" re-notify cadence: a single
+    // alert into a busy channel is an outage nobody sees. NULL only for rows
+    // that predate this column.
+    lastNotifiedAt: timestamp('last_notified_at', { withTimezone: true }),
   },
   (t) => [
     uniqueIndex('incidents_one_open_per_check_idx')

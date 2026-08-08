@@ -64,6 +64,17 @@
   argon2 work. A correct password clears both counters. `POST /auth/setup` is not
   throttled — it is single-use and 409s afterwards, so throttling it would only offer
   a way to lock a fresh install out of its own first login.
+- FR-5.3a **Still-down reminders**: `alerts.renotify_minutes` (Settings, 0 = off, the
+  default) re-announces an incident that is still open on that cadence until it
+  resolves. A single message into a busy channel at 02:00 is an outage nobody sees.
+  - Measured from the *last notification*, not from `opened_at`, so enabling the
+    cadence does not fire a burst of catch-up reminders for long-running incidents.
+  - Reminders go through the same `alerts` queue as the original, so an active
+    maintenance window suppresses them identically — planned work does not stay
+    silent for one message and then start paging.
+  - `incidents.last_notified_at` is stamped *before* publishing: a crash between the
+    two skips one reminder, which is much better than a crash loop re-announcing the
+    same incident on every restart.
 - FR-5.4 **Maintenance windows**: a scheduled window suppresses alert *delivery* for one
   application, or platform-wide (admin only), between `startsAt` and `endsAt` (half-open,
   so adjacent windows leave no unsuppressed instant).
