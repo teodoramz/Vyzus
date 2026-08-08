@@ -71,6 +71,13 @@
       "when": 1786126582914,
       "tag": "0009_young_captain_universe",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1786203923897,
+      "tag": "0010_broken_kang",
+      "breakpoints": true
     }
   ]
 }

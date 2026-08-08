@@ -5,6 +5,7 @@
 // outcome in `alert_deliveries`. Channel selection honours `all_apps` and the
 // `app_alert_channels` bindings.
 import { createHmac } from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { Worker } from 'bullmq';
 import type { Redis } from 'ioredis';
@@ -15,9 +16,11 @@ import {
   ALERT_SIGNATURE_HEADER,
   alertJobPayloadSchema,
   isMonitoringAlert,
+  isEmailChannelConfig,
   activeMaintenanceWindow,
   type AlertWebhookPayload,
   type MonitoringAlertWebhookPayload,
+  type EmailChannelConfig,
   type AlertEvent,
   type ChannelType,
 } from '@vyzus/shared';
@@ -155,6 +158,74 @@ function renderMonitoringBody(type: ChannelType, p: MonitoringAlertWebhookPayloa
   return p;
 }
 
+/**
+ * Email subject + body. Rendered for both payload variants — a check alert and a
+ * platform `monitoring.stalled`/`resumed` — because the alerter delivers both to
+ * every matching channel, and an email renderer that only understood check
+ * alerts would throw on the one telling you the monitoring itself stopped.
+ *
+ * Both a plain-text and an HTML part: text-only is unreadable once it carries a
+ * screenshot link and timings, HTML-only breaks in terminal mail clients.
+ */
+export function renderEmailBody(
+  p: AlertWebhookPayload,
+  publicUrl: string,
+): { subject: string; text: string; html: string } {
+  const esc = (v: string): string =>
+    v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  if (isMonitoringAlert(p)) {
+    const stalled = p.event === 'monitoring.stalled';
+    const subject = stalled ? '[Vyzus] MONITORING STALLED — no checks are running' : '[Vyzus] Monitoring resumed';
+    const detail = stalled
+      ? `No check has completed anywhere in ${humanSilence(p.monitoring.silentForSeconds)} (threshold ${p.monitoring.thresholdMinutes}m). Vyzus itself may be down — verify the worker.`
+      : `Checks are completing again after ${humanSilence(p.monitoring.silentForSeconds)} of silence.`;
+    const lastRun = p.monitoring.lastRunAt ?? 'never';
+    const text = [detail, '', `Last run: ${lastRun}`, `Dashboard: ${publicUrl}`].join('\n');
+    const html = [
+      `<h2 style="color:${stalled ? RED : GREEN}">${esc(stalled ? 'Monitoring stalled' : 'Monitoring resumed')}</h2>`,
+      `<p>${esc(detail)}</p>`,
+      `<p><strong>Last run:</strong> ${esc(lastRun)}<br>`,
+      `<a href="${esc(publicUrl)}">Open Vyzus</a></p>`,
+    ].join('');
+    return { subject, text, html };
+  }
+
+  const down = p.event === 'check.down';
+  const subject = down
+    ? `[Vyzus] DOWN: ${p.application.name} — ${p.check.name}`
+    : `[Vyzus] Recovered: ${p.application.name} — ${p.check.name}`;
+  const appUrl = `${publicUrl}/apps/${p.application.id}`;
+  const runUrl = `${publicUrl}/runs/${p.run.id}`;
+  const detail = down
+    ? `Error: ${p.run.errorMessage ?? 'n/a'}`
+    : `Downtime: ${humanDowntime(p.incident.downtimeSeconds)}`;
+
+  const text = [
+    `${down ? 'DOWN' : 'RECOVERED'}: ${p.application.name} — ${p.check.name} (${p.check.type})`,
+    '',
+    detail,
+    `Run status: ${p.run.status}`,
+    '',
+    `Application: ${appUrl}`,
+    `Run: ${runUrl}`,
+    ...(p.run.screenshotUrl ? [`Screenshot: ${p.run.screenshotUrl}`] : []),
+  ].join('\n');
+
+  const html = [
+    `<h2 style="color:${down ? RED : GREEN}">${esc(down ? 'DOWN' : 'Recovered')}: ${esc(p.application.name)}</h2>`,
+    `<p><strong>Check:</strong> ${esc(p.check.name)} (${esc(p.check.type)})<br>`,
+    `<strong>${down ? 'Error' : 'Downtime'}:</strong> ${esc(down ? (p.run.errorMessage ?? 'n/a') : humanDowntime(p.incident.downtimeSeconds))}<br>`,
+    `<strong>Run status:</strong> ${esc(p.run.status)}</p>`,
+    `<p><a href="${esc(appUrl)}">Application</a> &middot; <a href="${esc(runUrl)}">Run detail</a></p>`,
+    ...(p.run.screenshotUrl
+      ? [`<p><img src="${esc(p.run.screenshotUrl)}" alt="Screenshot" style="max-width:100%"></p>`]
+      : []),
+  ].join('');
+
+  return { subject, text, html };
+}
+
 /** Render the outbound HTTP body for a channel type (04-api-spec). */
 export function renderAlertBody(type: ChannelType, p: AlertWebhookPayload, publicUrl: string): unknown {
   if (isMonitoringAlert(p)) return renderMonitoringBody(type, p, publicUrl);
@@ -245,16 +316,24 @@ export async function deliverToChannel(
   const backoffBaseMs = opts.backoffBaseMs ?? 1_000;
   const timeoutMs = opts.timeoutMs ?? 10_000;
 
+  // Email is SMTP, not an HTTP POST, so it needs its own transport — but it
+  // reuses the same retry/backoff loop and reports the same DeliveryOutcome, so
+  // `alert_deliveries` logging upstream stays identical for every channel type.
+  if (isEmailChannelConfig(channel.config)) {
+    return deliverByEmail(channel.config, payload, publicUrl, { maxAttempts, backoffBaseMs, timeoutMs });
+  }
+  const config = channel.config;
+
   const body = JSON.stringify(renderAlertBody(channel.type, payload, publicUrl));
   const headers: Record<string, string> = { 'content-type': 'application/json' };
-  if (channel.type === 'webhook' && channel.config.secret) {
-    headers[ALERT_SIGNATURE_HEADER] = hmacSignature(channel.config.secret, body);
+  if (channel.type === 'webhook' && config.secret) {
+    headers[ALERT_SIGNATURE_HEADER] = hmacSignature(config.secret, body);
   }
 
   let responseCode: number | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const res = await fetch(channel.config.url, {
+      const res = await fetch(config.url, {
         method: 'POST',
         headers,
         body,
@@ -268,6 +347,45 @@ export async function deliverToChannel(
     if (attempt < maxAttempts) await sleep(backoffBaseMs * 2 ** (attempt - 1));
   }
   return { ok: false, attempts: maxAttempts, responseCode };
+}
+
+/**
+ * SMTP delivery. `responseCode` stays null throughout: SMTP has reply codes but
+ * nodemailer does not surface them uniformly, and inventing an HTTP-shaped
+ * number would be worse than admitting there isn't one.
+ */
+async function deliverByEmail(
+  config: EmailChannelConfig,
+  payload: AlertWebhookPayload,
+  publicUrl: string,
+  opts: { maxAttempts: number; backoffBaseMs: number; timeoutMs: number },
+): Promise<DeliveryOutcome> {
+  const { subject, text, html } = renderEmailBody(payload, publicUrl);
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    ...(config.username && config.password ? { auth: { user: config.username, pass: config.password } } : {}),
+    connectionTimeout: opts.timeoutMs,
+    greetingTimeout: opts.timeoutMs,
+    socketTimeout: opts.timeoutMs,
+  });
+
+  try {
+    for (let attempt = 1; attempt <= opts.maxAttempts; attempt++) {
+      try {
+        await transporter.sendMail({ from: config.from, to: config.to.join(', '), subject, text, html });
+        return { ok: true, attempts: attempt, responseCode: null };
+      } catch {
+        // Deliberately swallowed: the message can carry the SMTP password in a
+        // connection string, and this outcome is written to alert_deliveries.
+        if (attempt < opts.maxAttempts) await sleep(opts.backoffBaseMs * 2 ** (attempt - 1));
+      }
+    }
+    return { ok: false, attempts: opts.maxAttempts, responseCode: null };
+  } finally {
+    transporter.close();
+  }
 }
 
 // ---- Queue consumer ----

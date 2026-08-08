@@ -126,7 +126,16 @@
 - FR-4.6 Global header: totals (apps up/down), active incidents banner.
 
 ### FR-5 Alerting
-- FR-5.1 Alert channels: **Slack/Discord incoming webhook** and **generic webhook** (POST JSON). Channels are defined globally and attached to applications (default: all).
+- FR-5.1 Alert channels: **email (SMTP)**, **Slack/Discord incoming webhook**, and **generic
+  webhook** (POST JSON). Channels are defined globally and attached to applications (default: all).
+  - Config is validated against the channel's `type` at the request body, which is where the
+    discriminant lives. `alert_channels.config` itself carries no discriminant and is never
+    re-parsed on read, so adding `email` needed no data migration for existing rows.
+  - Email sends both a plain-text and an HTML part, renders the platform
+    `monitoring.stalled`/`resumed` alerts as well as check alerts, and escapes
+    operator-supplied text (application and check names) before it reaches HTML.
+  - The SMTP password is redacted from every response as `hasPassword`, kept separate from
+    `hasSecret` (the webhook HMAC signing secret) because they are different claims.
 - FR-5.2 An **incident** opens when a check fails `failure_threshold` times consecutively → `check.down` alert fires. It resolves on the first subsequent success → `check.recovered` alert fires (with downtime duration).
 - FR-5.3 Alert payload includes: app name, check name, status, error, run URL, screenshot URL, timestamp.
 - FR-5.4 Alert deliveries are retried (3 attempts, exponential backoff) and logged.

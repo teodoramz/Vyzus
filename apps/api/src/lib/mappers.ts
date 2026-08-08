@@ -13,7 +13,7 @@ import type {
   UptimeConfig,
   JourneyConfig,
 } from '@vyzus/shared';
-import { DEFAULT_RETENTION, DEFAULT_HEARTBEAT_STALL_MINUTES, SETTINGS_KEYS } from '@vyzus/shared';
+import { DEFAULT_RETENTION, DEFAULT_HEARTBEAT_STALL_MINUTES, SETTINGS_KEYS, isEmailChannelConfig } from '@vyzus/shared';
 import type { UserRow, CheckRow, ApplicationRow, AlertChannelRow, IncidentRow, RunRow } from '../db/schema.js';
 
 const iso = (d: Date): string => d.toISOString();
@@ -65,8 +65,12 @@ export function toChannel(row: AlertChannelRow, appIds: string[], createdByEmail
     id: row.id,
     name: row.name,
     type: row.type,
-    url: row.config.url,
-    hasSecret: row.config.secret != null,
+    url: isEmailChannelConfig(row.config) ? null : row.config.url,
+    hasSecret: !isEmailChannelConfig(row.config) && row.config.secret != null,
+    hasPassword: isEmailChannelConfig(row.config) && row.config.password != null,
+    target: isEmailChannelConfig(row.config)
+      ? `${row.config.host}:${row.config.port} → ${row.config.to.join(', ')}`
+      : row.config.url,
     enabled: row.enabled,
     allApps: row.allApps,
     appIds,

@@ -33,8 +33,8 @@ response-time metrics, screenshots, incident history and alerting.
 - **Dashboard** — grid of all apps with live UP/DOWN status, availability % (24h/7d/30d),
   response-time charts, run history, screenshot gallery, incident timeline.
 - **On-demand screenshot** — one click captures the landing page *right now*.
-- **Alerting** — Slack/Discord webhooks + generic JSON webhooks on down/recovery,
-  with a configurable consecutive-failure threshold.
+- **Alerting** — email (SMTP), Slack/Discord webhooks, and generic JSON webhooks on
+  down/recovery, with a configurable consecutive-failure threshold.
 - **Session login** — for targets behind a normal login form: Vyzus signs in with a
   real browser first, so the check runs against the authenticated page rather than the
   login screen. Credentials are encrypted at rest.

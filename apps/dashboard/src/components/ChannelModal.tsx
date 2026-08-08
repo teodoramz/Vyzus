@@ -1,4 +1,4 @@
-// FR-5.1 alert channels admin — create/edit Slack/Discord/generic webhook.
+// FR-5.1 alert channels admin — create/edit Slack/Discord/generic webhook/email.
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Channel, ChannelType } from '@vyzus/shared';
@@ -21,6 +21,15 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
   const [type, setType] = useState<ChannelType>(channel?.type ?? 'webhook');
   const [url, setUrl] = useState(channel?.url ?? '');
   const [secret, setSecret] = useState('');
+  // Email (SMTP). Kept in separate state from the webhook URL so switching type
+  // back and forth in the form does not lose what was already typed.
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState(587);
+  const [smtpSecure, setSmtpSecure] = useState(false);
+  const [smtpUser, setSmtpUser] = useState('');
+  const [smtpPassword, setSmtpPassword] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
   const [enabled, setEnabled] = useState(channel?.enabled ?? true);
   const [allApps, setAllApps] = useState(channel?.allApps ?? !isViewer);
   const [appIds, setAppIds] = useState<string[]>(channel?.appIds ?? []);
@@ -30,10 +39,27 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
 
   const save = useMutation({
     mutationFn: () => {
-      const config = secret ? { url, secret } : { url };
+      const config =
+        type === 'email'
+          ? {
+              host,
+              port,
+              secure: smtpSecure,
+              from,
+              to: to
+                .split(',')
+                .map((t) => t.trim())
+                .filter(Boolean),
+              ...(smtpUser ? { username: smtpUser } : {}),
+              ...(smtpPassword ? { password: smtpPassword } : {}),
+            }
+          : secret
+            ? { url, secret }
+            : { url };
+      const body = { name, type, config, enabled, allApps, appIds };
       return isEdit
-        ? channelsApi.update(channel!.id, { name, type, config, enabled, allApps, appIds })
-        : channelsApi.create({ name, type, config, enabled, allApps, appIds });
+        ? channelsApi.update(channel!.id, body as Parameters<typeof channelsApi.update>[1])
+        : channelsApi.create(body as Parameters<typeof channelsApi.create>[0]);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: ['channels'] });
@@ -84,21 +110,115 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
             ))}
           </select>
         </div>
-        <div>
-          <label htmlFor="channel-url" className={labelClass}>
-            {type === 'webhook'
-              ? 'Webhook URL'
-              : `${type.charAt(0).toUpperCase()}${type.slice(1)} incoming webhook URL`}
-          </label>
-          <input
-            id="channel-url"
-            type="url"
-            required
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className={inputClass}
-          />
-        </div>
+        {type !== 'email' && (
+          <div>
+            <label htmlFor="channel-url" className={labelClass}>
+              {type === 'webhook'
+                ? 'Webhook URL'
+                : `${type.charAt(0).toUpperCase()}${type.slice(1)} incoming webhook URL`}
+            </label>
+            <input
+              id="channel-url"
+              type="url"
+              required
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        )}
+
+        {type === 'email' && (
+          <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-white/10">
+            <div className="grid grid-cols-3 gap-2">
+              <div className="col-span-2">
+                <label htmlFor="smtp-host" className={labelClass}>
+                  SMTP host
+                </label>
+                <input
+                  id="smtp-host"
+                  required
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className={inputClass}
+                  placeholder="smtp.example.com"
+                />
+              </div>
+              <div>
+                <label htmlFor="smtp-port" className={labelClass}>
+                  Port
+                </label>
+                <input
+                  id="smtp-port"
+                  type="number"
+                  min={1}
+                  max={65535}
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value) || 587)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={smtpSecure} onChange={(e) => setSmtpSecure(e.target.checked)} />
+              Implicit TLS (port 465). Leave off for STARTTLS on 587.
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label htmlFor="smtp-user" className={labelClass}>
+                  Username (optional)
+                </label>
+                <input
+                  id="smtp-user"
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label htmlFor="smtp-pass" className={labelClass}>
+                  Password (optional)
+                </label>
+                <input
+                  id="smtp-pass"
+                  type="password"
+                  value={smtpPassword}
+                  onChange={(e) => setSmtpPassword(e.target.value)}
+                  className={inputClass}
+                  placeholder={isEdit && channel?.hasPassword ? 'Leave blank to keep existing password' : ''}
+                />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="smtp-from" className={labelClass}>
+                From address
+              </label>
+              <input
+                id="smtp-from"
+                type="email"
+                required
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className={inputClass}
+                placeholder="vyzus@example.com"
+              />
+            </div>
+            <div>
+              <label htmlFor="smtp-to" className={labelClass}>
+                Recipients
+              </label>
+              <input
+                id="smtp-to"
+                required
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className={inputClass}
+                placeholder="ops@example.com, oncall@example.com"
+              />
+              <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">Comma-separated.</p>
+            </div>
+          </div>
+        )}
         {type === 'webhook' && (
           <div>
             <label htmlFor="channel-secret" className={labelClass}>

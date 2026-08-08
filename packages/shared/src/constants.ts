@@ -49,7 +49,7 @@ export type ScreenshotMode = (typeof SCREENSHOT_MODES)[number];
 /** Default cadence for the periodic refresh on a healthy check. */
 export const DEFAULT_SCREENSHOT_REFRESH_MINUTES = 60;
 
-export const CHANNEL_TYPES = ['slack', 'discord', 'webhook'] as const;
+export const CHANNEL_TYPES = ['slack', 'discord', 'webhook', 'email'] as const;
 export type ChannelType = (typeof CHANNEL_TYPES)[number];
 
 // `down`/`recovered` describe a single check's incident. `stalled`/`resumed`
