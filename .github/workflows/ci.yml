@@ -13,7 +13,11 @@ on:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede in-flight PR runs — only the latest push to a branch matters there.
+  # Never cancel a push to main: each commit is supposed to get its own verdict,
+  # and a rapid follow-up (especially a docs-only one, which legitimately skips
+  # the code jobs) would otherwise leave the previous commit's code unverified.
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
   contents: read
