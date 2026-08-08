@@ -53,6 +53,37 @@ TCP is unambiguous: connect succeeds, is refused, or times out. UDP has no
 handshake, so silence within the timeout is reported as reachable rather than
 failing a service that simply never answers an empty probe.
 
+## 2a. Heartbeat (push) checks
+
+For anything Vyzus cannot reach: a cron job, a backup script, a batch import, a host
+behind NAT. The job reports in; Vyzus does not go looking.
+
+1. Add a check of type **Heartbeat (push)**. A ping URL is generated for you.
+2. Have the job request that URL when it finishes successfully:
+
+```bash
+# at the end of your cron job / backup script
+curl -fsS --retry 3 https://vyzus.example.com/api/v1/push/<token> > /dev/null
+```
+
+`GET` is fine — `curl` defaults to it. Put the call at the *end* of the job, after the
+work has succeeded: a ping sent at the start reports that the job launched, not that it
+worked.
+
+The check fails when nothing arrives within its **interval + grace**. Set the interval
+to how often the job is supposed to run, and leave a couple of minutes of grace — a job
+on a 5-minute cron never lands exactly on the mark, and without slack the check would
+flap.
+
+A check that has never been pinged measures from its creation, so a new one will not
+fail before its job has had a chance to run once.
+
+The token is the only credential on that URL. Treat it as a secret; **Regenerate token**
+revokes the old one immediately.
+
+> Failing heartbeat checks mark an application **degraded**, never **down** — a stalled
+> background job does not mean the site is unreachable.
+
 ## 3. Journey checks (user-simulation tests)
 
 A journey check is a short Playwright script that simulates a real user flow —
@@ -126,6 +157,24 @@ page — open it with `npx playwright show-trace <file>` for a step-by-step repl
   and are blocked before any connection is attempted (`net::ERR_UNSAFE_PORT`) —
   this is a browser security restriction, not an application bug; avoid picking
   those ports for real targets.
+
+## 3a. Alerting settings
+
+Under **Settings**:
+
+| Setting | What it does |
+|---|---|
+| Alert if nothing runs for (minutes) | The dead-man's switch. If no check completes *anywhere* in this window, Vyzus alerts that its own monitoring has stopped — the failure a dead worker cannot report itself. Raised automatically to twice your shortest check interval when that is longer. `0` disables it |
+| Repeat alerts while still down (minutes) | Re-announces an open incident on this cadence until it resolves. A single message in a busy channel at 02:00 is an outage nobody sees. `0` disables it |
+| Maintenance windows | Suppress alerts for planned work, per application or platform-wide. Checks keep running and incidents are still recorded — only the notification is withheld |
+
+Alert channels support **email (SMTP)**, Slack, Discord, and generic signed webhooks.
+For Gmail use an App Password (not your account password, with 2FA enabled),
+`smtp.gmail.com` port `587`, and leave "Implicit TLS" **off** so it uses STARTTLS.
+
+> The dead-man's switch cannot tell you the *API* is down — if that process dies, nothing
+> is left to send the alert. Point an external check at `GET /api/v1/health` as well; see
+> `docs/05-infrastructure.md`.
 
 ## 4. Reading the dashboard
 

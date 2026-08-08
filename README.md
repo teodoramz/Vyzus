@@ -13,7 +13,7 @@ response-time metrics, screenshots, incident history and alerting.
 ## What it does
 
 - **Enroll web applications** — name, landing URL, tags, optional encrypted credentials.
-- **Two kinds of checks per application:**
+- **Three kinds of checks per application:**
   - **Uptime check**, in either of two modes:
     - `http` — loads the page in a real browser, asserts HTTP status / CSS selector /
       body text / page title, records timing metrics (TTFB, DOMContentLoaded, full

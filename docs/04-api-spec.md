@@ -78,11 +78,65 @@ rejected for them, every `appId` must be one they're assigned to, and they can
 never see or touch another user's channel (including admin-created global ones).
 `editor` has no channel access at all, unchanged from before the viewer role existed.
 
+Four channel types. Config is validated against `type` **in the request body**, which
+is where the discriminant lives — `alert_channels.config` itself carries none and is
+never re-parsed on read, so `email` was added with no migration for existing rows.
+
+| type | config |
+|---|---|
+| `slack` / `discord` | `{ url }` |
+| `webhook` | `{ url, secret? }` — `secret` enables `X-Vyzus-Signature` |
+| `email` | `{ host, port, secure, username?, password?, from, to[] }` — SMTP |
+
+Responses never return a credential: `url` is null for `email`, `hasSecret` reports a
+webhook signing secret, `hasPassword` reports an SMTP password (deliberately separate —
+they are different claims), and `target` is a display string for the channel list.
+
 ## Stats & ops
 | Route | Semantics |
 |---|---|
-| `GET /stats` | `{ apps: { total, up, down, paused }, openIncidents, queueDepth, runsLast24h }` — header bar. **Viewer-scoped**: every count except `queueDepth` (a platform-wide operational number, not app data) is restricted to assigned apps |
+| `GET /stats` | `{ apps: { total, up, degraded, down, paused }, openIncidents, queueDepth, runsLast24h, monitoringStalledSince }` — header bar. **Viewer-scoped**: every count except `queueDepth` (a platform-wide operational number, not app data) is restricted to assigned apps. `monitoringStalledSince` is also platform-wide: a stalled platform is stalled for every viewer |
 | `GET /health` | liveness (checks DB + Redis ping); unauthenticated |
+| `GET/PATCH /settings` | retention windows plus `heartbeatStallMinutes` (dead-man's switch) and `renotifyMinutes` (still-down reminders). Read by any authenticated user; PATCH is admin-only |
+
+## API tokens
+`GET /tokens` · `POST /tokens` · `DELETE /tokens/:id` — scoped to the caller's **own**
+tokens; deliberately not admin-listable, since the stored hashes are useless and a
+wider view only widens the blast radius.
+
+A token acts as its owning user — same id, role and per-viewer application scoping — so
+every rule in `lib/access.ts` applies unchanged rather than through a second permission
+model that could drift. Presented as `Authorization: Bearer vyz_…`; the `vyz_` prefix is
+what distinguishes it from a JWT, so neither credential kind costs the other a lookup.
+
+The secret is returned **once**, by `POST /tokens`. Only a SHA-256 hash is stored —
+appropriate here because the secret is 256 bits of CSPRNG output, so there is no
+dictionary to attack and authentication needs an indexed lookup rather than a scan.
+
+## Maintenance windows
+`GET /maintenance` · `POST /maintenance` · `DELETE /maintenance/:id` · `GET /maintenance/active`
+
+Suppresses alert **delivery** for planned work; never execution. Checks keep running and
+incidents still open and close, so history stays complete and the dead-man's switch —
+which watches for runs *stopping* — is unaffected. Platform `monitoring.stalled` alerts
+are never suppressed.
+
+Half-open `[startsAt, endsAt)`, so adjacent windows leave no unsuppressed instant.
+`appId: null` is platform-wide and admin-only; a scoped window needs access to that app.
+Reading is open to any authenticated user — a viewer needs to know why their application
+stopped alerting.
+
+## Heartbeat receipt (push checks)
+`GET|POST /push/:token` — **unauthenticated by design.** The point is that a cron job or
+backup script can report in with one `curl` and no credential plumbing; the token is the
+credential, scoped to one check and revoked by regenerating it. GET is accepted because
+`curl` defaults to it and a ping requiring `-X POST` is one people forget to send.
+
+Records only that a ping arrived (`checks.last_ping_at`). Health is decided by the
+check's own scheduled run, which asks whether a ping landed within
+`intervalMinutes + graceMinutes` — which is why incidents, alerts, availability and the
+run history need no special case for this type. An unknown token returns `404` without
+revealing whether it ever existed.
 
 ## WebSocket — `/ws`
 Auth: `?token=<accessToken>` on upgrade. Server → client events (JSON, fed by Redis pub/sub):
@@ -106,6 +160,9 @@ Client sends nothing except pings. Dashboard falls back to 30 s polling if WS dr
 
 ## Alert webhook payloads (outbound)
 
+Two variants. Every channel receives **both**, so a renderer that only understands check
+alerts will throw on the platform one — which is the alert you most need delivered.
+
 Generic `webhook` channel receives (with `X-Vyzus-Signature: hmac-sha256` when secret set):
 ```json
 {
@@ -117,5 +174,19 @@ Generic `webhook` channel receives (with `X-Vyzus-Signature: hmac-sha256` when s
   "timestamp": "2026-07-13T12:00:00Z"
 }
 ```
+
+The platform variant carries no application, check, incident or run — the whole point is
+that nothing ran:
+
+```json
+{
+  "event": "monitoring.stalled" | "monitoring.resumed",
+  "monitoring": { "lastRunAt": "2026-08-08T09:00:00Z" | null, "silentForSeconds": 3600, "thresholdMinutes": 15 },
+  "timestamp": "2026-08-08T10:00:00Z"
+}
+```
+
+Sent to every enabled `all_apps` channel: those are the ones subscribed to the platform
+rather than to one target. Never suppressed by a maintenance window.
 `slack` / `discord` channels receive the same information rendered as Block Kit /
 embed messages (red for down, green for recovered).

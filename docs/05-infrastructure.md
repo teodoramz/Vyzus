@@ -9,7 +9,7 @@ The compose file, Dockerfiles, nginx config and `.env.example` at the repo root 
 |---|---|---|---|
 | dashboard | `infra/dashboard.Dockerfile` | node:24-slim → nginx:1.31-alpine | **8080 → 80** (only exposed port) |
 | api | `infra/api.Dockerfile` | node:24-slim | 3000 (internal) |
-| worker | `infra/worker.Dockerfile` | mcr.microsoft.com/playwright:v1.55.1-noble | — |
+| worker | `infra/worker.Dockerfile` | mcr.microsoft.com/playwright:v1.62.1-noble | — |
 | postgres | — | postgres:16-alpine | 5432 (internal) |
 | redis | — | redis:7-alpine | 6379 (internal) |
 

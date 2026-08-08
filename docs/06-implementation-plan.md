@@ -86,8 +86,16 @@ dependencies — run `pnpm install` at the root first to generate `pnpm-lock.yam
 `pnpm typecheck && pnpm test` green at root; no `any` without a comment; every route
 validated by a shared Zod schema; worker never crashes on a malformed job (log + fail run).
 
-## Backlog (v2 candidates, not in 1.0.0)
-SSL-certificate expiry checks · maintenance windows · public status page ·
-email/Telegram channels · multi-region probes · hourly rollup table · S3/MinIO
-artifacts · Kubernetes/Helm · CI pipeline · per-check custom alert thresholds on
-response time (performance budgets) · multi-step journey timing breakdown.
+## Backlog
+
+This file is a historical record of how 1.0.0 was staged; the list below has moved on
+since. **Delivered after 1.0.0:** certificate expiry warnings (port *and* http checks) ·
+maintenance windows · email (SMTP) channels · CI/CD pipelines · latency thresholds
+(performance budgets) · visual regression · API tokens · push/heartbeat checks ·
+still-down reminders · a dead-man's switch for the platform itself · session login for
+authenticated targets · HTTPS deployment.
+
+**Still open:** public status page · ICMP ping and DNS monitors · group monitors with
+parent/child suppression · Telegram and other notification integrations (an Apprise
+bridge would buy most of them at once) · multi-region probes · hourly rollup table ·
+S3/MinIO artifacts · Kubernetes/Helm · multi-step journey timing breakdown.

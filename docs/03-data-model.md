@@ -162,8 +162,17 @@ Join table `(app_id, channel_id)` PK — used when `all_apps = false`.
 | created_at | timestamptz | |
 
 ## settings
-Single-row key/value `(key text PK, value jsonb)` for runtime-tunable retention:
-`retention.runs_days` (90), `retention.screenshots_days` (30), `retention.traces_days` (14).
+Key/value `(key text PK, value jsonb)` for runtime-tunable behaviour. Defaults live in
+`packages/shared/src/constants.ts`, so a missing row is never an error.
+
+| key | default | meaning |
+|---|---|---|
+| `retention.runs_days` | 90 | runs (and their artifacts) deleted past this age |
+| `retention.screenshots_days` | 30 | screenshots pruned past this age — screenshots are otherwise kept per run, so this is the only thing that removes them |
+| `retention.traces_days` | 14 | Playwright traces pruned past this age |
+| `heartbeat.stall_minutes` | 15 | dead-man's switch: alert if no check completes platform-wide inside this window. `0` disables |
+| `heartbeat.stalled_since` | — | *state, not config*: set while the platform is stalled so the alert fires once per transition rather than every minute |
+| `alerts.renotify_minutes` | 0 (off) | re-announce a still-open incident on this cadence |
 
 ## Reserved for v2 (do NOT build now)
 `run_stats_hourly (check_id, hour, total, passed, avg_duration_ms)` — only if the
@@ -171,7 +180,9 @@ on-demand availability queries ever get slow (see 02-architecture §6).
 
 ## Derived values (never stored)
 - **App status** — `UP` when everything that has run is passing; `DOWN` only when
-  *every* liveness (`uptime`) check is failing; `DEGRADED` when some are failing and
+  *every* liveness (`uptime`) check is failing; `push` and `journey` checks can degrade
+  an application but never mark it `DOWN` (a stalled cron job or a broken login flow is
+  not an unreachable site); `DEGRADED` when some are failing and
   some are not, including when only a `journey` fails (a broken flow is not a dead
   site, so a journey can never produce `DOWN`); `PAUSED` when the app or all its
   checks are disabled; `UNKNOWN` before anything has run. See
