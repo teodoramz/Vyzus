@@ -138,16 +138,92 @@ See `.env.example`. Notable:
 
 ## Monitoring the monitor
 
-`heartbeat.stall_minutes` (Settings, default 15) is the dead-man's switch. The API
-evaluates it once a minute and alerts if no check has completed platform-wide inside
-the window — the one failure the platform cannot otherwise report, since a dead worker
-produces no failing checks to alert on.
+A monitoring tool has to be more trustworthy than the things it watches, and its worst
+failure is silence: if it stops working, nothing fails, no alert fires, and the
+dashboard keeps serving the last known status. Silence is indistinguishable from health
+unless something is deliberately watching for it.
 
-It deliberately lives in the API rather than the worker. If the worker hosted it, the
-switch would die with the process it exists to watch.
+**Vyzus covers part of this itself, and cannot cover the rest.** Configuring the second
+half is not optional if you rely on these alerts.
 
-It does not cover an API that is itself down. For that, point an external uptime check
-at `GET /api/v1/health` — the standard advice for any self-hosted monitor.
+### What covers what
+
+| Failure | Covered by | Notes |
+|---|---|---|
+| A monitored target goes down | the check itself | the ordinary case |
+| Worker process dies or crashloops | dead-man's switch | it watches for *runs stopping*, so a worker that is alive but wedged is caught too |
+| Postgres or Redis unreachable | dead-man's switch, partly | runs stop, so it notices — but if Postgres is down the API cannot read settings or send anything |
+| **API process dies** | **nothing internal** | the switch runs *in* the API; it dies with it |
+| **Host or network dies** | **nothing internal** | |
+| The external checker dies | nothing | see "where to stop", below |
+
+`heartbeat.stall_minutes` (Settings, default 15) is the dead-man's switch: the API
+evaluates it once a minute and alerts when no check has completed platform-wide inside
+the window. It lives in the API rather than the worker on purpose — a switch hosted by
+the process it exists to watch dies with it. But that only moves the problem: nothing
+inside Vyzus can report that Vyzus is gone.
+
+### The external check
+
+Point something *outside this host* at:
+
+```
+GET https://vyzus.example.com/api/v1/health
+```
+
+| Response | Meaning |
+|---|---|
+| `200` `{"status":"ok","db":true,"redis":true}` | API up, Postgres and Redis reachable |
+| `503` `{"status":"degraded","db":false,...}` | API up but a dependency is down — the booleans say which |
+| hangs, then times out | API or host is gone. **This is the case the internal switch can never report.** |
+
+Two things to get right:
+
+- **Do not point it at `/`.** nginx serves the dashboard from disk, so the root returns
+  `200` even when the API container is dead. A check on `/` would report green through
+  exactly the outage you are trying to catch. Use `/api/v1/health`.
+- **Run it from another machine.** A checker on the same host dies with the host, which
+  is one of the failures it is supposed to catch.
+- **Give the check its own timeout.** A dead API does not produce a fast `502`: nginx
+  waits on the upstream, so the request hangs rather than failing immediately (measured
+  at >20s with the api container stopped). A checker with no timeout will sit there
+  instead of alerting. Ten seconds is plenty — a healthy `/health` is two pings.
+
+The endpoint is unauthenticated and returns three booleans and nothing else — no
+application data, no counts, no names — so it is safe to hand to a third-party checker
+or a free hosted monitor.
+
+### Three ways to do it
+
+**A second Vyzus** — if you already run two instances, give each an `uptime` check on
+the other's `/api/v1/health`, with alert channels that do not share infrastructure.
+Mutual monitoring, no extra tooling.
+
+**Any external uptime monitor** — Uptime Kuma, a hosted free tier, your cloud
+provider's health check. This is the pragmatic answer for most single-instance
+deployments, and it is worth doing even though it means running a second tool: it is
+cheap, and it is the only thing that catches a dead host.
+
+**cron + curl**, when there is nothing else to hand — on a *different* machine:
+
+```bash
+#!/usr/bin/env bash
+# /etc/cron.d entry: */5 * * * * /usr/local/bin/vyzus-liveness
+set -uo pipefail
+if ! curl -fsS --max-time 10 https://vyzus.example.com/api/v1/health > /dev/null; then
+  # -f makes curl exit non-zero on 5xx as well as on a refused connection
+  printf 'Subject: Vyzus is not answering\n\nGET /api/v1/health failed at %s\n' "$(date -Is)" \
+    | sendmail you@example.com
+fi
+```
+
+### Where to stop
+
+Whatever watches Vyzus is itself unwatched, and chasing that produces an infinite
+regress. The practical rule: the outermost checker should be something with a different
+failure mode from Vyzus — a different host, ideally a different provider, and a
+notification path that does not depend on your own infrastructure. One layer of that is
+enough for a self-hosted tool; two is diminishing returns.
 
 ## Held-back dependencies
 

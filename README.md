@@ -45,7 +45,9 @@ response-time metrics, screenshots, incident history and alerting.
   a set percentage of pixels, catching defacement and blank-page deploys that still
   return HTTP 200.
 - **Maintenance windows** — suppress alerts during planned work without pausing checks.
-- **Dead-man's switch** — alerts if the platform itself stops running checks.
+- **Dead-man's switch** — alerts if the platform itself stops running checks. It cannot
+  report its own API being down, so pair it with an external check on `/api/v1/health` —
+  see [Monitoring the monitor](docs/05-infrastructure.md#monitoring-the-monitor).
 - **API tokens** — scoped, revocable credentials so CI never holds a human's password.
 - **Failure artifacts** — screenshot, Playwright trace, and error details for every failed run.
 - **Roles** — `admin`, `editor`, and `viewer` (read/run only, scoped to explicitly

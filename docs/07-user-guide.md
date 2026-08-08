@@ -172,9 +172,11 @@ Alert channels support **email (SMTP)**, Slack, Discord, and generic signed webh
 For Gmail use an App Password (not your account password, with 2FA enabled),
 `smtp.gmail.com` port `587`, and leave "Implicit TLS" **off** so it uses STARTTLS.
 
-> The dead-man's switch cannot tell you the *API* is down — if that process dies, nothing
-> is left to send the alert. Point an external check at `GET /api/v1/health` as well; see
-> `docs/05-infrastructure.md`.
+> **The dead-man's switch cannot tell you the API is down** — it runs inside the API, so
+> it dies with it. Point something outside this host at `GET /api/v1/health` as well.
+> Not at `/`: nginx serves the dashboard from disk and returns `200` even when the API is
+> dead. See "Monitoring the monitor" in
+> [`docs/05-infrastructure.md`](../docs/05-infrastructure.md) for the full setup.
 
 ## 4. Reading the dashboard
 
