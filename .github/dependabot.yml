@@ -47,12 +47,19 @@ updates:
     groups:
       base-images:
         patterns: ['*']
+        # Belt and braces: the group is what actually opens the PR, so the
+        # exclusion has to apply here too, not only in `ignore` below.
+        exclude-patterns: ['*playwright*']
     ignore:
       # The Playwright image tag is pinned to the `playwright` npm version and
       # enforced by the playwright-lockstep CI job. Dependabot's docker
       # ecosystem cannot see that npm pin, so it proposes an image bump on its
       # own — which always fails lockstep. Bump both together by hand instead.
-      - dependency-name: mcr.microsoft.com/playwright
+      #
+      # Wildcard rather than the full registry path: the first attempt used
+      # `mcr.microsoft.com/playwright` and a PR still appeared, so Dependabot is
+      # matching on a shorter name than the FROM line shows.
+      - dependency-name: '*playwright*'
       # Node majors only. 24 is LTS; 25 is not, and it also unbundled corepack,
       # so `corepack enable` in the Dockerfiles exits 127 on it. Patch and minor
       # bumps of the 24 line still come through.
