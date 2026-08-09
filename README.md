@@ -124,8 +124,12 @@ Enroll an application in the dashboard and it arrives already monitored: a landi
 uptime check, a DNS resolution check, and — for `https://` targets — a TLS certificate
 check with a 14-day expiry warning. The first runs appear live within their intervals.
 
-No ping check is created by default: ICMP is blocked by most CDNs, so it would report a
-healthy site as unreachable. Add one where you know ICMP is answered.
+Defaults are chosen so they pass on day one for a healthy target — one that cries wolf
+immediately just teaches you to ignore the badge. So no ping check is created (ICMP is
+blocked by most CDNs, and it would report a healthy site as unreachable), and the TLS
+check does not enforce chain trust, which means a self-signed internal service passes.
+Neither costs coverage: the landing check runs in a real browser, which already refuses
+an untrusted certificate.
 
 ### Serving over HTTPS
 

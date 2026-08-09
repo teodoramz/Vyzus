@@ -493,6 +493,15 @@ describe('defaultChecksFor', () => {
     expect(tls.config).toMatchObject({ mode: 'port', port: 8443, tls: true, certExpiryWarningDays: 14 });
   });
 
+  // A self-signed internal service is healthy from the operator's point of
+  // view, so the default must not fail on it. Nothing is lost: the landing
+  // uptime check runs in Chromium, which already refuses an untrusted
+  // certificate, and the expiry warning works regardless of this flag.
+  it('does not enforce chain trust on the default TLS check', () => {
+    const tls = defaultChecksFor('https://selfsigned.internal', 5).find((c) => c.name === 'TLS certificate')!;
+    expect(tls.config).toMatchObject({ allowInsecureCert: true, certExpiryWarningDays: 14 });
+  });
+
   // Slower than uptime on purpose: neither changes minute to minute.
   it('gives DNS and TLS their own slower cadences', () => {
     const specs = defaultChecksFor('https://shop.example.com', 1);

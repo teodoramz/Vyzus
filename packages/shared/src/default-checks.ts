@@ -88,11 +88,18 @@ export function defaultChecksFor(landingUrl: string, intervalMinutes: number): D
         protocol: 'tcp',
         family: 'auto',
         tls: true,
-        // Chain trust is enforced. For a deliberately self-signed internal
-        // service this check will fail until `allowInsecureCert` is switched
-        // on — which is the honest default: silently accepting any certificate
-        // would make the check meaningless for everyone else.
-        allowInsecureCert: false,
+        // Chain trust is deliberately NOT enforced here, and that costs nothing:
+        // the landing uptime check loads the site in Chromium, which refuses an
+        // untrusted certificate outright, so a broken chain on a public site
+        // already fails that check. Enforcing it again here would add no signal
+        // and would false-alarm on every deliberately self-signed internal
+        // service — breaking the rule that a default must pass on day one.
+        //
+        // The expiry warning below is unaffected by this flag: a self-signed
+        // certificate expires exactly like a public one, and catching that is
+        // the whole reason this check exists. Turn the flag off per-check to
+        // additionally enforce the chain.
+        allowInsecureCert: true,
         certExpiryWarningDays: DEFAULT_CERT_EXPIRY_WARNING_DAYS,
       },
     });

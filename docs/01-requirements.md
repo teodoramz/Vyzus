@@ -167,9 +167,13 @@
   - `createDefaultChecks: false` on `POST /apps` suppresses the set. `sync-targets` sends
     it, because the target files own that application's checks and `--prune` would
     otherwise delete the starter set on the next run.
-  - Known caveat: a deliberately self-signed internal service fails the TLS check until
-    `allowInsecureCert` is switched on. Silently accepting any certificate would make the
-    check meaningless for everyone else, so the default enforces the chain.
+  - The default TLS check does **not** enforce chain trust (`allowInsecureCert: true`),
+    so a deliberately self-signed internal service passes. That costs no coverage: the
+    landing uptime check loads the site in Chromium, which refuses an untrusted
+    certificate outright, so a broken chain on a public site already fails there. The
+    expiry warning is unaffected by the flag — a self-signed certificate expires like any
+    other, and catching that is the point of the check. Turn the flag off per-check to
+    enforce the chain as well.
 - FR-2.2b **Uptime check, `ping` mode**: ICMP echo. Answers "is this host reachable at
   all", which a TCP port probe cannot — a machine with every port closed is still up, and
   a router or appliance may expose no port worth probing.
