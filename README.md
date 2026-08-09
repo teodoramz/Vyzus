@@ -120,8 +120,12 @@ account and no admin password in the environment, so a freshly deployed instance
 has no credentials to guess — the first person to reach it claims it, and setup
 is permanently closed afterwards.
 
-Enroll an application in the dashboard (it gets a default uptime check) and the
-first run appears live within its interval.
+Enroll an application in the dashboard and it arrives already monitored: a landing
+uptime check, a DNS resolution check, and — for `https://` targets — a TLS certificate
+check with a 14-day expiry warning. The first runs appear live within their intervals.
+
+No ping check is created by default: ICMP is blocked by most CDNs, so it would report a
+healthy site as unreachable. Add one where you know ICMP is answered.
 
 ### Serving over HTTPS
 

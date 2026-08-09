@@ -208,6 +208,10 @@ async function syncTarget(client, target, stats) {
         landingUrl: appSpec.landingUrl,
         tags: appSpec.tags ?? [],
         intervalMinutes: appSpec.intervalMinutes ?? 5,
+        // The files own this application's checks. Letting the API add its
+        // starter set would mean --prune deletes them again on the next run,
+        // which looks like the tool fighting itself.
+        createDefaultChecks: false,
       });
     } else {
       app = { id: null, name: appSpec.name, checks: [] };

@@ -52,8 +52,15 @@ export const createAppBodySchema = z.object({
   parentAppId: uuidSchema.nullable().default(null),
   /** Show on the public status page. Off by default — opting in is deliberate. */
   isPublic: z.boolean().default(false),
-  // interval for the auto-created default uptime check
+  // interval for the auto-created primary uptime check
   intervalMinutes: z.number().int().min(1).default(DEFAULT_INTERVAL_MINUTES),
+  /**
+   * Create the starter set of checks (uptime + DNS + TLS, as applicable).
+   * Set false when something else owns this application's checks — notably
+   * `scripts/sync-targets.mjs --prune`, which deletes any check not named in
+   * the target files and would otherwise remove these on the next run.
+   */
+  createDefaultChecks: z.boolean().default(true),
 });
 export type CreateAppBody = z.infer<typeof createAppBodySchema>;
 

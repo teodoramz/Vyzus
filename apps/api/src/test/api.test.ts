@@ -295,10 +295,13 @@ describe('applications + checks CRUD', () => {
     return res.json();
   }
 
-  it('creates an app with a default uptime check and syncs its schedule', async () => {
+  it('creates an app with the starter check set and syncs each schedule', async () => {
     const app = await createApp();
     expect(app.status).toBe('UNKNOWN');
-    expect(app.checks).toHaveLength(1);
+    // https target with a hostname: uptime + DNS + TLS. The full derivation is
+    // covered in unit.test.ts; here we only assert the primary check and that
+    // every one of them reached the scheduler.
+    expect(app.checks).toHaveLength(3);
     expect(app.checks[0].type).toBe('uptime');
     expect(app.checks[0].name).toBe('Landing uptime');
     expect(app.checks[0].intervalMinutes).toBe(5);
@@ -308,8 +311,10 @@ describe('applications + checks CRUD', () => {
     expect(app.checks[0].config.screenshotRefreshMinutes).toBe(60);
     expect(app.checks[0].availability24h).toBeNull();
 
-    // The scheduler seam was invoked for the new check.
-    expect(ctx.scheduler.syncCalls.some((c) => c.checkId === app.checks[0].id)).toBe(true);
+    // Every starter check needs its own repeatable — an unscheduled check never runs.
+    for (const c of app.checks) {
+      expect(ctx.scheduler.syncCalls.some((s) => s.checkId === c.id)).toBe(true);
+    }
   });
 
   it('validates the create body', async () => {
@@ -329,7 +334,7 @@ describe('applications + checks CRUD', () => {
     expect(res.statusCode).toBe(200);
     const list = res.json();
     expect(list).toHaveLength(1);
-    expect(list[0].checksCount).toBe(1);
+    expect(list[0].checksCount).toBe(3);
     expect(list[0].status).toBe('UNKNOWN');
     expect(list[0].latestScreenshotRunId).toBeNull();
   });
@@ -372,7 +377,8 @@ describe('applications + checks CRUD', () => {
       url: `/api/v1/apps/${app.id}/checks`,
       headers: authHeader(adminToken),
     });
-    expect(list.json()).toHaveLength(2);
+    // Three starter checks plus the journey just created.
+    expect(list.json()).toHaveLength(4);
 
     // Update interval → re-sync.
     ctx.scheduler.syncCalls = [];

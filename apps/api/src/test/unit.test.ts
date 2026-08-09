@@ -11,6 +11,7 @@ import {
   certExpiryMessage,
   findFailingAncestor,
   wouldCreateCycle,
+  defaultChecksFor,
 } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
@@ -459,5 +460,55 @@ describe('application dependencies', () => {
     expect(wouldCreateCycle('c', null, parentOf)).toBe(false);
     // A fresh leaf under an existing chain is fine.
     expect(wouldCreateCycle('d', 'c', parentOf)).toBe(false);
+  });
+});
+
+describe('defaultChecksFor', () => {
+  const names = (url: string, interval = 5) => defaultChecksFor(url, interval).map((c) => c.name);
+
+  it('always includes the landing uptime check at the chosen interval', () => {
+    const specs = defaultChecksFor('https://shop.example.com', 3);
+    expect(specs[0]!.name).toBe('Landing uptime');
+    expect(specs[0]!.intervalMinutes).toBe(3);
+    expect(specs[0]!.config).toMatchObject({ mode: 'http', expectedStatus: 200 });
+  });
+
+  it('adds DNS and TLS for an https site with a hostname', () => {
+    expect(names('https://shop.example.com')).toEqual(['Landing uptime', 'DNS resolves', 'TLS certificate']);
+  });
+
+  // Nothing to resolve, so a DNS check would fail on day one.
+  it('skips DNS for an IP literal', () => {
+    expect(names('https://10.0.0.5')).toEqual(['Landing uptime', 'TLS certificate']);
+    expect(names('http://[2001:db8::1]:8080')).toEqual(['Landing uptime']);
+  });
+
+  // No certificate to inspect over plain HTTP.
+  it('skips the TLS check for an http site', () => {
+    expect(names('http://intranet.example.com')).toEqual(['Landing uptime', 'DNS resolves']);
+  });
+
+  it('targets the URL port for the TLS check, not always 443', () => {
+    const tls = defaultChecksFor('https://shop.example.com:8443', 5).find((c) => c.name === 'TLS certificate')!;
+    expect(tls.config).toMatchObject({ mode: 'port', port: 8443, tls: true, certExpiryWarningDays: 14 });
+  });
+
+  // Slower than uptime on purpose: neither changes minute to minute.
+  it('gives DNS and TLS their own slower cadences', () => {
+    const specs = defaultChecksFor('https://shop.example.com', 1);
+    expect(specs.find((c) => c.name === 'DNS resolves')!.intervalMinutes).toBe(15);
+    expect(specs.find((c) => c.name === 'TLS certificate')!.intervalMinutes).toBe(60);
+  });
+
+  // ICMP is blocked by most CDNs; a default ping would report a healthy site
+  // as unreachable and drag the badge down on day one.
+  it('never includes a ping check', () => {
+    for (const url of ['https://a.example.com', 'http://b.example.com', 'https://10.0.0.1']) {
+      expect(defaultChecksFor(url, 5).some((c) => (c.config as { mode?: string }).mode === 'ping')).toBe(false);
+    }
+  });
+
+  it('degrades to the uptime check alone when the URL will not parse', () => {
+    expect(names('not a url')).toEqual(['Landing uptime']);
   });
 });

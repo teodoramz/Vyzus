@@ -6,6 +6,7 @@ import type { FastifyInstance } from 'fastify';
 import {
   createAppBodySchema,
   wouldCreateCycle,
+  defaultChecksFor,
   updateAppBodySchema,
   appDetailSchema,
   appListSchema,
@@ -17,11 +18,9 @@ import {
   reorderChecksBodySchema,
   checkListSchema,
   DEFAULT_INTERVAL_MINUTES,
-  DEFAULT_SCREENSHOT_REFRESH_MINUTES,
   type AppSummary,
   type AppDetail,
   type CheckWithAvailability,
-  type HttpModeConfig,
 } from '@vyzus/shared';
 import { applications, checks, runs } from '../db/schema.js';
 import type { ApplicationRow, CheckRow } from '../db/schema.js';
@@ -33,18 +32,6 @@ import { encodeCursor, decodeCursor } from '../lib/cursor.js';
 import { accessibleAppIds, assertAppAccess } from '../lib/access.js';
 
 const editorOrAdmin = (app: Parameters<FastifyPluginAsyncZod>[0]) => [app.authenticate, app.requireRole('editor')];
-
-function defaultUptimeConfig(): HttpModeConfig {
-  return {
-    mode: 'http',
-    maxDurationMs: 0,
-    visualDiffPercent: 0,
-    certExpiryWarningDays: 0,
-    expectedStatus: 200,
-    screenshot: 'on_change',
-    screenshotRefreshMinutes: DEFAULT_SCREENSHOT_REFRESH_MINUTES,
-  };
-}
 
 async function loadAppDetail(app: Parameters<FastifyPluginAsyncZod>[0], appRow: ApplicationRow): Promise<AppDetail> {
   const checkRows = await app.db
@@ -169,6 +156,7 @@ export const appRoutes: FastifyPluginAsyncZod = async (app) => {
     { preHandler: write, schema: { body: createAppBodySchema, response: { 201: appDetailSchema } } },
     async (req, reply) => {
       const { name, landingUrl, tags, authConfig, enabled, intervalMinutes, parentAppId, isPublic } = req.body;
+      const createDefaults = req.body.createDefaultChecks;
       const authConfigEnc = authConfig != null ? encryptJson(authConfig, app.encryptionKey) : null;
       // A brand-new id cannot be part of a cycle, but the parent must exist.
       await assertNoParentCycle(app, '00000000-0000-4000-8000-000000000000', parentAppId);
@@ -178,21 +166,32 @@ export const appRoutes: FastifyPluginAsyncZod = async (app) => {
           .insert(applications)
           .values({ name, landingUrl, tags, authConfigEnc, enabled, parentAppId, isPublic })
           .returning();
-        const [checkRow] = await tx
-          .insert(checks)
-          .values({
-            appId: appRow!.id,
-            type: 'uptime',
-            name: 'Landing uptime',
-            intervalMinutes: intervalMinutes ?? DEFAULT_INTERVAL_MINUTES,
-            config: defaultUptimeConfig(),
-          })
-          .returning();
-        return { appRow: appRow!, checkRow: checkRow! };
+        // The starter set is derived from the landing URL — see
+        // packages/shared/src/default-checks.ts for what is included and why.
+        const specs = createDefaults ? defaultChecksFor(landingUrl, intervalMinutes ?? DEFAULT_INTERVAL_MINUTES) : [];
+        const checkRows = specs.length
+          ? await tx
+              .insert(checks)
+              .values(
+                specs.map((spec, i) => ({
+                  appId: appRow!.id,
+                  type: spec.type,
+                  name: spec.name,
+                  intervalMinutes: spec.intervalMinutes,
+                  config: spec.config,
+                  // Keeps the primary uptime check first in the tab order.
+                  sortOrder: i,
+                })),
+              )
+              .returning()
+          : [];
+        return { appRow: appRow!, checkRows };
       });
 
-      // Sync the new check's schedule (Phase 3 scheduler; no-op stub for now).
-      await app.scheduler.syncCheck(detail.checkRow, detail.appRow.enabled);
+      // Every starter check needs its own repeatable, not just the first.
+      for (const row of detail.checkRows) {
+        await app.scheduler.syncCheck(row, detail.appRow.enabled);
+      }
       return reply.status(201).send(await loadAppDetail(app, detail.appRow));
     },
   );

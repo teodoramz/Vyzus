@@ -34,10 +34,37 @@ async function createApp(): Promise<any> {
     method: 'POST',
     url: '/api/v1/apps',
     headers: authHeader(adminToken),
-    payload: { name: 'Shop', landingUrl: 'https://shop.example.com' },
+    // About ordering, not the starter set — opt out and create the single
+    // baseline check this suite is written against, so a change to the
+    // defaults cannot reshuffle its expectations.
+    payload: { name: 'Shop', landingUrl: 'https://shop.example.com', createDefaultChecks: false },
   });
   expect(res.statusCode).toBe(201);
-  return res.json();
+  const created = res.json();
+
+  const check = await ctx.app.inject({
+    method: 'POST',
+    url: `/api/v1/apps/${created.id}/checks`,
+    headers: authHeader(adminToken),
+    payload: {
+      type: 'uptime',
+      name: 'Landing uptime',
+      intervalMinutes: 5,
+      timeoutMs: 30000,
+      failureThreshold: 2,
+      enabled: true,
+      config: {
+        mode: 'http',
+        expectedStatus: 200,
+        screenshot: 'on_change',
+        maxDurationMs: 0,
+        visualDiffPercent: 0,
+        certExpiryWarningDays: 0,
+      },
+    },
+  });
+  expect(check.statusCode).toBe(201);
+  return { ...created, checks: [check.json()] };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

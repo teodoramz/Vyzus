@@ -30,6 +30,8 @@ export function NewAppModal({ onClose }: { onClose: () => void }): JSX.Element {
         // nothing to depend on yet, and publishing is a deliberate act.
         parentAppId: null,
         isPublic: false,
+        // Starter set: landing uptime, DNS, and TLS for https targets.
+        createDefaultChecks: true,
         intervalMinutes,
       }),
     onSuccess: (app) => {

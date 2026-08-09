@@ -134,6 +134,15 @@ export const DEFAULT_PING_PACKETS = 3;
 
 export const DEFAULT_STATUS_PAGE_TITLE = 'Service status';
 
+// Cadences for the auto-created starter checks. Both are deliberately slower
+// than the primary uptime check: a DNS record and a certificate expiry date do
+// not change minute to minute, and querying them at uptime cadence is load
+// without information.
+export const DEFAULT_DNS_CHECK_INTERVAL_MINUTES = 15;
+export const DEFAULT_CERT_CHECK_INTERVAL_MINUTES = 60;
+/** Two weeks is enough notice to renew without being so early it is ignored. */
+export const DEFAULT_CERT_EXPIRY_WARNING_DAYS = 14;
+
 export const DNS_RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS'] as const;
 export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
 

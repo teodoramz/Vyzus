@@ -150,6 +150,26 @@
     misleading. Credentials never appear in error messages or metrics.
   - The login is given at most half the check timeout, so a hanging login cannot
     consume the whole budget.
+- FR-1.6 **Default checks**: a newly enrolled application is created with a starter set
+  derived from its landing URL, so it is meaningfully monitored without anyone opening
+  the check editor:
+  - **Landing uptime** (`http`) — always, at the chosen interval.
+  - **DNS resolves** (`dns`, A record) — unless the host is an IP literal, where there is
+    nothing to resolve. Every 15 minutes: records rarely move.
+  - **TLS certificate** (`port` + `tls`, 14-day expiry warning) — `https://` targets only,
+    against the URL's own port. Hourly: an expiry date does not change minute to minute.
+  - **No ping check.** ICMP is blocked by most CDNs and many cloud providers, so a
+    default ping would report a healthy site as unreachable — and since `ping` is a
+    liveness mode it would drag the application badge down on the day it was added. The
+    guiding rule for every default is that it must *pass* on day one for a healthy
+    target; one that cries wolf immediately teaches people to ignore the badge.
+  - Each starter check gets its own schedule, and its own cadence.
+  - `createDefaultChecks: false` on `POST /apps` suppresses the set. `sync-targets` sends
+    it, because the target files own that application's checks and `--prune` would
+    otherwise delete the starter set on the next run.
+  - Known caveat: a deliberately self-signed internal service fails the TLS check until
+    `allowInsecureCert` is switched on. Silently accepting any certificate would make the
+    check meaningless for everyone else, so the default enforces the chain.
 - FR-2.2b **Uptime check, `ping` mode**: ICMP echo. Answers "is this host reachable at
   all", which a TCP port probe cannot — a machine with every port closed is still up, and
   a router or appliance may expose no port worth probing.

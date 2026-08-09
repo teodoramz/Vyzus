@@ -17,10 +17,8 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  // resetDb clears the Redis throttle counters too — see helpers.ts.
   await resetDb(ctx);
-  // Counters live in Redis, not Postgres, so resetDb does not clear them.
-  const keys = await ctx.redis.keys('vyzus:login-throttle:*');
-  if (keys.length > 0) await ctx.redis.del(...keys);
 });
 
 function login(password: string, email = ADMIN_EMAIL) {

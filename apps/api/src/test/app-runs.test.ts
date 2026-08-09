@@ -238,3 +238,50 @@ describe('GET /apps/:id/runs?hasScreenshot=true', () => {
     expect(new Set(body.runs.map((r) => r.checkName)).size).toBe(2);
   });
 });
+
+// A new application arrives meaningfully monitored without anyone opening the
+// check editor. Asserted through the real route because the scheduler wiring
+// (one repeatable per starter check, not just the first) is part of the
+// contract.
+describe('POST /apps — default checks', () => {
+  it('creates uptime, DNS and TLS checks for an https site, and schedules each', async () => {
+    ctx.scheduler.syncCalls = [];
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: authHeader(adminToken),
+      payload: { name: 'Shop', landingUrl: 'https://shop.example.com', intervalMinutes: 5 },
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as { checks: { name: string; intervalMinutes: number }[] };
+    expect(body.checks.map((c) => c.name).sort()).toEqual(['DNS resolves', 'Landing uptime', 'TLS certificate']);
+
+    // Every starter check gets its own schedule — an unscheduled check never runs.
+    expect(ctx.scheduler.syncCalls).toHaveLength(3);
+  });
+
+  it('omits the TLS check for a plain-http site', async () => {
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: authHeader(adminToken),
+      payload: { name: 'Intranet', landingUrl: 'http://intranet.example.com' },
+    });
+    const names = (res.json() as { checks: { name: string }[] }).checks.map((c) => c.name);
+    expect(names).toContain('Landing uptime');
+    expect(names).not.toContain('TLS certificate');
+  });
+
+  // sync-targets --prune deletes any check not named in the target files, so
+  // file-driven provisioning needs to be able to opt out.
+  it('creates only the application when createDefaultChecks is false', async () => {
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/apps',
+      headers: authHeader(adminToken),
+      payload: { name: 'Managed', landingUrl: 'https://managed.example.com', createDefaultChecks: false },
+    });
+    expect(res.statusCode).toBe(201);
+    expect((res.json() as { checks: unknown[] }).checks).toEqual([]);
+  });
+});
