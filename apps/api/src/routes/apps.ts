@@ -2,8 +2,10 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { and, asc, desc, eq, inArray, isNotNull, lt, or } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import type { FastifyInstance } from 'fastify';
 import {
   createAppBodySchema,
+  wouldCreateCycle,
   updateAppBodySchema,
   appDetailSchema,
   appListSchema,
@@ -121,6 +123,21 @@ async function buildSummary(
   };
 }
 
+/**
+ * Reject a parent that would create a cycle (A behind B behind A). The
+ * traversal at alert time tolerates one, but the data should never hold one —
+ * a cycle here means nothing in the loop can ever be the "root cause".
+ */
+async function assertNoParentCycle(app: FastifyInstance, appId: string, parentId: string | null): Promise<void> {
+  if (parentId === null) return;
+  const rows = await app.db.select({ id: applications.id, parentAppId: applications.parentAppId }).from(applications);
+  const parentOf = new Map(rows.map((r) => [r.id, r.parentAppId]));
+  if (!parentOf.has(parentId)) throw badRequest('Parent application not found', 'PARENT_NOT_FOUND');
+  if (wouldCreateCycle(appId, parentId, parentOf)) {
+    throw badRequest('That parent would create a dependency cycle', 'PARENT_CYCLE');
+  }
+}
+
 export const appRoutes: FastifyPluginAsyncZod = async (app) => {
   const write = editorOrAdmin(app);
 
@@ -151,13 +168,15 @@ export const appRoutes: FastifyPluginAsyncZod = async (app) => {
     '/',
     { preHandler: write, schema: { body: createAppBodySchema, response: { 201: appDetailSchema } } },
     async (req, reply) => {
-      const { name, landingUrl, tags, authConfig, enabled, intervalMinutes } = req.body;
+      const { name, landingUrl, tags, authConfig, enabled, intervalMinutes, parentAppId, isPublic } = req.body;
       const authConfigEnc = authConfig != null ? encryptJson(authConfig, app.encryptionKey) : null;
+      // A brand-new id cannot be part of a cycle, but the parent must exist.
+      await assertNoParentCycle(app, '00000000-0000-4000-8000-000000000000', parentAppId);
 
       const detail = await app.db.transaction(async (tx) => {
         const [appRow] = await tx
           .insert(applications)
-          .values({ name, landingUrl, tags, authConfigEnc, enabled })
+          .values({ name, landingUrl, tags, authConfigEnc, enabled, parentAppId, isPublic })
           .returning();
         const [checkRow] = await tx
           .insert(checks)
@@ -207,6 +226,11 @@ export const appRoutes: FastifyPluginAsyncZod = async (app) => {
       if (req.body.landingUrl !== undefined) patch.landingUrl = req.body.landingUrl;
       if (req.body.tags !== undefined) patch.tags = req.body.tags;
       if (req.body.enabled !== undefined) patch.enabled = req.body.enabled;
+      if (req.body.isPublic !== undefined) patch.isPublic = req.body.isPublic;
+      if (req.body.parentAppId !== undefined) {
+        await assertNoParentCycle(app, id, req.body.parentAppId);
+        patch.parentAppId = req.body.parentAppId;
+      }
       if (req.body.authConfig !== undefined) {
         patch.authConfigEnc = req.body.authConfig === null ? null : encryptJson(req.body.authConfig, app.encryptionKey);
       }

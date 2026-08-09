@@ -18,6 +18,7 @@ import {
   isMonitoringAlert,
   isEmailChannelConfig,
   activeMaintenanceWindow,
+  findFailingAncestor,
   type AlertWebhookPayload,
   type MonitoringAlertWebhookPayload,
   type EmailChannelConfig,
@@ -25,6 +26,7 @@ import {
   type ChannelType,
 } from '@vyzus/shared';
 import type { Database } from '../db/index.js';
+import { deriveAppStatus } from '../lib/queries.js';
 import {
   alertChannels,
   alertDeliveries,
@@ -35,6 +37,7 @@ import {
   maintenanceWindows,
   runs,
   type AlertChannelRow,
+  type CheckRow,
 } from '../db/schema.js';
 
 // ---- Payload construction ----
@@ -399,6 +402,45 @@ export interface AlerterOptions {
   backoffBaseMs?: number;
 }
 
+/**
+ * The nearest ancestor application that is currently DOWN, or null.
+ *
+ * Statuses are derived, not stored, so this loads every application with its
+ * checks and derives them — cheap at the scale this runs (once per alert, not
+ * per run) and avoids a denormalised status column that could go stale.
+ */
+async function findFailingUpstream(db: Database, appId: string): Promise<{ name: string } | null> {
+  const rows = await db
+    .select({
+      id: applications.id,
+      name: applications.name,
+      parentAppId: applications.parentAppId,
+      enabled: applications.enabled,
+      check: checks,
+    })
+    .from(applications)
+    .leftJoin(checks, eq(checks.appId, applications.id));
+
+  const byId = new Map<string, { id: string; name: string; parentAppId: string | null; status: string }>();
+  const checksByApp = new Map<string, CheckRow[]>();
+  for (const row of rows) {
+    if (row.check) {
+      const list = checksByApp.get(row.id) ?? [];
+      list.push(row.check);
+      checksByApp.set(row.id, list);
+    }
+    if (!byId.has(row.id)) {
+      byId.set(row.id, { id: row.id, name: row.name, parentAppId: row.parentAppId, status: 'UNKNOWN' });
+    }
+  }
+  for (const [id, node] of byId) {
+    const row = rows.find((r) => r.id === id)!;
+    node.status = deriveAppStatus(row.enabled, checksByApp.get(id) ?? []);
+  }
+
+  return findFailingAncestor(appId, byId);
+}
+
 export function startAlerter(options: AlerterOptions): Worker {
   const { connection, db, publicUrl, log } = options;
 
@@ -467,6 +509,24 @@ export function startAlerter(options: AlerterOptions): Worker {
             'alert suppressed by an active maintenance window',
           );
           return;
+        }
+
+        // Dependency suppression. One dead upstream should page once, not once
+        // per service behind it — forty alerts describing a single fault is how
+        // people learn to ignore the channel.
+        //
+        // Only `down` is suppressed. A recovery still goes out: having been told
+        // the upstream failed, you want to hear that this service came back,
+        // and a silent recovery leaves the incident looking open forever.
+        if (event === 'down') {
+          const failing = await findFailingUpstream(db, appId);
+          if (failing) {
+            log.info(
+              { incidentId, event, appId, upstream: failing.name },
+              'alert suppressed — an upstream application is down',
+            );
+            return;
+          }
         }
       }
 

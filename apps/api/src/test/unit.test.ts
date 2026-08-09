@@ -9,6 +9,8 @@ import {
   dueForRenotify,
   evaluateCertExpiry,
   certExpiryMessage,
+  findFailingAncestor,
+  wouldCreateCycle,
 } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
@@ -407,5 +409,55 @@ describe('evaluateCertExpiry', () => {
     expect(certExpiryMessage('example.com:443', 5, inDays(5), 14)).toMatch(
       /example\.com:443 expires in 5 day\(s\).*threshold is 14/,
     );
+  });
+});
+
+describe('application dependencies', () => {
+  const node = (id: string, parentAppId: string | null, status: string) => ({ id, parentAppId, name: id, status });
+  const map = (...ns: ReturnType<typeof node>[]) => new Map(ns.map((n) => [n.id, n]));
+
+  it('finds no ancestor when there is no parent', () => {
+    expect(findFailingAncestor('a', map(node('a', null, 'DOWN')))).toBeNull();
+  });
+
+  it('finds a failing immediate parent', () => {
+    const m = map(node('child', 'gw', 'DOWN'), node('gw', null, 'DOWN'));
+    expect(findFailingAncestor('child', m)?.id).toBe('gw');
+  });
+
+  // A dead host makes a service two levels down just as much collateral.
+  it('walks past a healthy parent to a failing grandparent', () => {
+    const m = map(node('svc', 'gw', 'DOWN'), node('gw', 'host', 'UP'), node('host', null, 'DOWN'));
+    expect(findFailingAncestor('svc', m)?.id).toBe('host');
+  });
+
+  it('returns null when every ancestor is healthy', () => {
+    const m = map(node('svc', 'gw', 'DOWN'), node('gw', 'host', 'UP'), node('host', null, 'UP'));
+    expect(findFailingAncestor('svc', m)).toBeNull();
+  });
+
+  // A partly-working upstream can still leave this service genuinely broken.
+  it('does not suppress on a merely DEGRADED ancestor', () => {
+    const m = map(node('svc', 'gw', 'DOWN'), node('gw', null, 'DEGRADED'));
+    expect(findFailingAncestor('svc', m)).toBeNull();
+  });
+
+  it('terminates on a cycle instead of hanging', () => {
+    const m = map(node('a', 'b', 'UP'), node('b', 'a', 'UP'));
+    expect(findFailingAncestor('a', m)).toBeNull();
+  });
+
+  it('rejects a parent that would create a cycle', () => {
+    const parentOf = new Map<string, string | null>([
+      ['a', null],
+      ['b', 'a'],
+      ['c', 'b'],
+    ]);
+    // a -> b -> c already; making a a child of c closes the loop.
+    expect(wouldCreateCycle('a', 'c', parentOf)).toBe(true);
+    expect(wouldCreateCycle('a', 'a', parentOf)).toBe(true);
+    expect(wouldCreateCycle('c', null, parentOf)).toBe(false);
+    // A fresh leaf under an existing chain is fine.
+    expect(wouldCreateCycle('d', 'c', parentOf)).toBe(false);
   });
 });
