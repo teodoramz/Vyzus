@@ -53,6 +53,10 @@ response-time metrics, screenshots, incident history and alerting.
   a set percentage of pixels, catching defacement and blank-page deploys that still
   return HTTP 200.
 - **Maintenance windows** — suppress alerts during planned work without pausing checks.
+- **Dependency suppression** — mark an application as sitting behind another; while the
+  upstream is down, everything behind it stays quiet instead of paging once per service.
+- **Public status page** — an unauthenticated `/status` view of the applications you
+  explicitly publish: name, status and uptime only, never URLs or error text.
 - **Dead-man's switch** — alerts if the platform itself stops running checks. It cannot
   report its own API being down, so pair it with an external check on `/api/v1/health` —
   see [Monitoring the monitor](docs/05-infrastructure.md#monitoring-the-monitor).

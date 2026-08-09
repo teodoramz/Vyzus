@@ -86,6 +86,7 @@ export const SETTINGS_KEYS = {
   tracesDays: 'retention.traces_days',
   heartbeatStallMinutes: 'heartbeat.stall_minutes',
   renotifyMinutes: 'alerts.renotify_minutes',
+  statusPageTitle: 'status_page.title',
 } as const;
 
 /**
@@ -130,6 +131,8 @@ export const DEFAULT_PUSH_GRACE_MINUTES = 2;
 
 /** ICMP echoes per ping check. Enough to measure loss without being a burst. */
 export const DEFAULT_PING_PACKETS = 3;
+
+export const DEFAULT_STATUS_PAGE_TITLE = 'Service status';
 
 export const DNS_RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS'] as const;
 export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];

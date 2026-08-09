@@ -42,6 +42,8 @@ export function toApp(row: ApplicationRow): App {
     tags: row.tags,
     hasAuthConfig: row.authConfigEnc != null,
     enabled: row.enabled,
+    parentAppId: row.parentAppId,
+    isPublic: row.isPublic,
     createdAt: iso(row.createdAt),
     updatedAt: iso(row.updatedAt),
   };

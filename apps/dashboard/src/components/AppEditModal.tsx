@@ -1,7 +1,7 @@
 // FR-1.1/FR-1.2/FR-1.3 — edit application (name/url/tags/enabled + optional
 // basic-auth/header credentials, stored encrypted server-side).
 import { useState, type FormEvent } from 'react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { AppDetail } from '@vyzus/shared';
 import { appsApi } from '../api/endpoints';
 import { ApiError } from '../api/http';
@@ -15,6 +15,8 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
   const [landingUrl, setLandingUrl] = useState(app.landingUrl);
   const [tags, setTags] = useState(app.tags.join(', '));
   const [enabled, setEnabled] = useState(app.enabled);
+  const [parentAppId, setParentAppId] = useState<string>(app.parentAppId ?? '');
+  const [isPublic, setIsPublic] = useState(app.isPublic);
   const [useAuth, setUseAuth] = useState(app.hasAuthConfig);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -40,6 +42,8 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
           .map((t) => t.trim())
           .filter(Boolean),
         enabled,
+        parentAppId: parentAppId === '' ? null : parentAppId,
+        isPublic,
         authConfig: buildAuthConfig(),
       }),
     onSuccess: () => {
@@ -82,6 +86,12 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
     return { ...(basicAuth ?? {}), ...(sessionLogin ?? {}) };
   }
 
+  // Everything except this app itself — a self-parent is the one cycle the UI
+  // can rule out without asking the server. Deeper cycles are rejected by the
+  // API, which is the only place that can see the whole graph.
+  const { data: allApps } = useQuery({ queryKey: ['apps'], queryFn: () => appsApi.list() });
+  const parentOptions = (allApps ?? []).filter((a) => a.id !== app.id);
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -121,6 +131,40 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
             Tags (comma separated)
           </label>
           <input id="edit-tags" value={tags} onChange={(e) => setTags(e.target.value)} className={inputClass} />
+        </div>
+
+        <div>
+          <label htmlFor="app-parent" className={labelClass}>
+            Depends on (optional)
+          </label>
+          <select
+            id="app-parent"
+            value={parentAppId}
+            onChange={(e) => setParentAppId(e.target.value)}
+            className={inputClass}
+          >
+            <option value="">Nothing — this is a root</option>
+            {parentOptions.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+            While the upstream is down, this application&apos;s alerts are suppressed — one dead gateway should page
+            once, not once per service behind it. Recoveries still send.
+          </p>
+        </div>
+
+        <div>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isPublic} onChange={(e) => setIsPublic(e.target.checked)} />
+            Show on the public status page
+          </label>
+          <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
+            Publishes this application&apos;s name, status and uptime to an unauthenticated page. The landing URL, check
+            names and error messages are never exposed.
+          </p>
         </div>
 
         <label className="flex items-center gap-2 text-sm">

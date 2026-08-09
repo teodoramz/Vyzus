@@ -61,6 +61,8 @@ import {
   type UpdateSettingsBody,
   type Stats,
   type AppStatus,
+  statusPageSchema,
+  type StatusPage,
   maintenanceWindowSchema,
   maintenanceWindowListSchema,
   type MaintenanceWindow,
@@ -206,6 +208,12 @@ export const maintenanceApi = {
   create: (body: CreateMaintenanceWindowBody) =>
     apiRequest<MaintenanceWindow>('/maintenance', maintenanceWindowSchema, { method: 'POST', body }),
   remove: (id: string) => apiRequestVoid(`/maintenance/${id}`, { method: 'DELETE' }),
+};
+
+// ---- Public status page (unauthenticated) ----
+
+export const statusApi = {
+  get: () => apiRequest<StatusPage>('/status', statusPageSchema),
 };
 
 // ---- Stats ----

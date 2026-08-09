@@ -83,6 +83,34 @@
   - `incidents.last_notified_at` is stamped *before* publishing: a crash between the
     two skips one reminder, which is much better than a crash loop re-announcing the
     same incident on every restart.
+- FR-5.5 **Dependency suppression**: an application may declare a `parentAppId` — the
+  gateway, router or host it sits behind. While any ancestor is `DOWN`, this
+  application's `down` alerts are suppressed.
+  - One dead upstream should page once, not once per service behind it. Forty alerts
+    describing a single fault is how people learn to ignore the channel.
+  - Walks the whole chain, not just the immediate parent: a dead host makes a service
+    two levels below it just as much collateral.
+  - `DEGRADED` deliberately does **not** suppress — a partly-working upstream can still
+    leave a specific downstream genuinely broken, and hiding that behind an unrelated
+    fault is worse than an extra alert.
+  - **Recoveries are never suppressed.** Having been told the upstream failed, you want
+    to hear this service came back; a silent recovery leaves the incident looking open.
+  - Cycles are rejected on write (`PARENT_CYCLE`); the traversal also terminates on one
+    defensively, since bad data must not hang the alerter.
+- FR-6.4 **Public status page**: `GET /api/v1/status`, unauthenticated, plus a `/status`
+  route in the dashboard rendered outside the auth guard.
+  - Applications opt **in** via `is_public` (default false). A status page that opts
+    applications in by accident is a data leak, not a cosmetic bug.
+  - Exposes application name, derived status, and 24h/30d availability; incidents are
+    reduced to application name and timing.
+  - Deliberately **not** exposed: landing URLs (often internal), check names and types
+    (they describe internal topology), and run error messages (they routinely carry
+    internal hostnames, stack traces and query strings). The payload has its own schema
+    rather than being a subset of the authenticated views, so adding a field elsewhere
+    cannot leak it here by accident.
+  - Does not consult `lib/access.ts`: that layer answers "what may this *user* see", and
+    there is no user. Passing it a null user would be the kind of shortcut that becomes
+    a leak the first time its defaults change.
 - FR-5.4 **Maintenance windows**: a scheduled window suppresses alert *delivery* for one
   application, or platform-wide (admin only), between `startsAt` and `endsAt` (half-open,
   so adjacent windows leave no unsuppressed instant).

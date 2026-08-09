@@ -23,6 +23,7 @@ import { settingsRoutes } from './routes/settings.js';
 import { tokenRoutes } from './routes/tokens.js';
 import { maintenanceRoutes } from './routes/maintenance.js';
 import { pushRoutes } from './routes/push.js';
+import { statusRoutes } from './routes/status.js';
 import { statsRoutes } from './routes/stats.js';
 import { runRoutes } from './routes/runs.js';
 import { incidentRoutes } from './routes/incidents.js';
@@ -75,6 +76,8 @@ export async function buildApp(deps: BuildAppDeps): Promise<FastifyInstance> {
   await app.register(maintenanceRoutes, { prefix: '/api/v1/maintenance' });
   // Unauthenticated by design — see routes/push.ts.
   await app.register(pushRoutes, { prefix: '/api/v1/push' });
+  // Unauthenticated, opt-in per application — see routes/status.ts.
+  await app.register(statusRoutes, { prefix: '/api/v1/status' });
   await app.register(statsRoutes, { prefix: '/api/v1' });
   await app.register(runRoutes, { prefix: '/api/v1' });
   await app.register(incidentRoutes, { prefix: '/api/v1' });

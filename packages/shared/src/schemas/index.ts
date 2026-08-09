@@ -10,4 +10,5 @@ export * from './settings.js';
 export * from './stats.js';
 export * from './ws.js';
 export * from './tokens.js';
+export * from './status.js';
 export * from './maintenance.js';

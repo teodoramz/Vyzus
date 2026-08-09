@@ -17,6 +17,7 @@ import {
   uniqueIndex,
   primaryKey,
   check,
+  type AnyPgColumn,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import type { UptimeConfig, JourneyConfig, PushConfig } from '../schemas/checks.js';
@@ -60,6 +61,14 @@ export const applications = pgTable('applications', {
     .default(sql`'{}'::text[]`),
   authConfigEnc: text('auth_config_enc'),
   enabled: boolean('enabled').notNull().default(true),
+  // Optional upstream this application sits behind — a gateway, a router, the
+  // host itself. When the parent is DOWN, this application's alerts are
+  // suppressed: one dead upstream should page once, not once per service
+  // behind it. Self-referencing, so declared with the callback form.
+  parentAppId: uuid('parent_app_id').references((): AnyPgColumn => applications.id, { onDelete: 'set null' }),
+  // Included on the public status page. Off by default — a status page that
+  // opts applications in by accident is a data leak, not a cosmetic bug.
+  isPublic: boolean('is_public').notNull().default(false),
   createdAt,
   updatedAt,
 });

@@ -48,6 +48,10 @@ export const createAppBodySchema = z.object({
   tags: z.array(z.string().min(1).max(50)).max(50).default([]),
   authConfig: appAuthConfigSchema.nullable().optional(),
   enabled: z.boolean().default(true),
+  /** Upstream this sits behind; its outage suppresses this app's alerts. */
+  parentAppId: uuidSchema.nullable().default(null),
+  /** Show on the public status page. Off by default — opting in is deliberate. */
+  isPublic: z.boolean().default(false),
   // interval for the auto-created default uptime check
   intervalMinutes: z.number().int().min(1).default(DEFAULT_INTERVAL_MINUTES),
 });
@@ -60,6 +64,8 @@ export const updateAppBodySchema = z
     tags: z.array(z.string().min(1).max(50)).max(50).optional(),
     authConfig: appAuthConfigSchema.nullable().optional(),
     enabled: z.boolean().optional(),
+    parentAppId: uuidSchema.nullable().optional(),
+    isPublic: z.boolean().optional(),
   })
   .refine((v) => Object.keys(v).length > 0, { message: 'Empty update' });
 export type UpdateAppBody = z.infer<typeof updateAppBodySchema>;
@@ -72,6 +78,8 @@ export const appSchema = z.object({
   tags: z.array(z.string()),
   hasAuthConfig: z.boolean(),
   enabled: z.boolean(),
+  parentAppId: uuidSchema.nullable(),
+  isPublic: z.boolean(),
   createdAt: isoTimestamp,
   updatedAt: isoTimestamp,
 });

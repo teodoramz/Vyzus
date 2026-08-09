@@ -8,6 +8,7 @@ import { RealtimeProvider } from './ws/RealtimeProvider';
 import { ToastProvider } from './components/ToastProvider';
 import { Layout } from './components/Layout';
 import { Login } from './pages/Login';
+import { StatusPage } from './pages/StatusPage';
 import { SetupRoute } from './pages/SetupRoute';
 import { Overview } from './pages/Overview';
 import { Channels } from './pages/Channels';
@@ -37,6 +38,9 @@ export default function App(): JSX.Element {
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   <Route path="/setup" element={<SetupRoute />} />
+                  {/* Outside ProtectedRoute on purpose — the status page is
+                      the one view that must work with no session. */}
+                  <Route path="/status" element={<StatusPage />} />
                   <Route
                     element={
                       <ProtectedRoute>

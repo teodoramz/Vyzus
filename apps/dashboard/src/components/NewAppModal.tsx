@@ -26,6 +26,10 @@ export function NewAppModal({ onClose }: { onClose: () => void }): JSX.Element {
           .map((t) => t.trim())
           .filter(Boolean),
         enabled: true,
+        // Both configured after creation, in the edit modal — a new app has
+        // nothing to depend on yet, and publishing is a deliberate act.
+        parentAppId: null,
+        isPublic: false,
         intervalMinutes,
       }),
     onSuccess: (app) => {
