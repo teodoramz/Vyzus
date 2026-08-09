@@ -13,20 +13,28 @@ import type {
   JourneyConfig,
   PortModeConfig,
   PushConfig,
+  PingModeConfig,
+  DnsModeConfig,
   UptimeMode,
 } from '@vyzus/shared';
-import { DEFAULT_SCREENSHOT_REFRESH_MINUTES, DEFAULT_PUSH_GRACE_MINUTES } from '@vyzus/shared';
+import { DEFAULT_SCREENSHOT_REFRESH_MINUTES, DEFAULT_PUSH_GRACE_MINUTES, DEFAULT_PING_PACKETS } from '@vyzus/shared';
 import { checksApi, appsApi } from '../api/endpoints';
 import { ApiError } from '../api/http';
 import { HttpModeConfigFields } from '../components/HttpModeConfigFields';
 import { PortConfigFields } from '../components/PortConfigFields';
+import { PingConfigFields, DnsConfigFields } from '../components/PingDnsConfigFields';
 import { JourneyConfigFields, DEFAULT_JOURNEY_SPEC } from '../components/JourneyConfigFields';
 import { DryRunResult } from '../components/DryRunResult';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../components/formFields';
 
 const TYPE_LABEL: Record<CheckType, string> = { uptime: 'Uptime', journey: 'Journey', push: 'Heartbeat (push)' };
-const UPTIME_MODE_LABEL: Record<UptimeMode, string> = { http: 'HTTP(S) service', port: 'TCP/UDP port' };
+const UPTIME_MODE_LABEL: Record<UptimeMode, string> = {
+  http: 'HTTP(S) service',
+  port: 'TCP/UDP port',
+  ping: 'ICMP ping',
+  dns: 'DNS record',
+};
 
 function defaultHttpConfig(): HttpModeConfig {
   return {
@@ -60,6 +68,19 @@ function newPushToken(): string {
 function defaultPushConfig(): PushConfig {
   return { token: newPushToken(), graceMinutes: DEFAULT_PUSH_GRACE_MINUTES };
 }
+function defaultPingConfig(): PingModeConfig {
+  return {
+    mode: 'ping',
+    host: '',
+    family: 'auto',
+    packets: DEFAULT_PING_PACKETS,
+    maxPacketLossPercent: 0,
+    maxRttMs: 0,
+  };
+}
+function defaultDnsConfig(): DnsModeConfig {
+  return { mode: 'dns', host: '', recordType: 'A', expectedValues: [] };
+}
 function defaultJourneyConfig(): JourneyConfig {
   return { specSource: DEFAULT_JOURNEY_SPEC };
 }
@@ -88,6 +109,8 @@ export function CheckEditor(): JSX.Element {
   const [portConfig, setPortConfig] = useState<PortModeConfig>(defaultPortConfig());
   const [journeyConfig, setJourneyConfig] = useState<JourneyConfig>(defaultJourneyConfig());
   const [pushConfig, setPushConfig] = useState<PushConfig>(defaultPushConfig());
+  const [pingConfig, setPingConfig] = useState<PingModeConfig>(defaultPingConfig());
+  const [dnsConfig, setDnsConfig] = useState<DnsModeConfig>(defaultDnsConfig());
   const [error, setError] = useState<string | null>(null);
   const [dryRunResult, setDryRunResult] = useState<DryRunResultType | null>(null);
 
@@ -117,10 +140,12 @@ export function CheckEditor(): JSX.Element {
       setFailureThreshold(existing.data.failureThreshold);
       setEnabled(existing.data.enabled);
       if (existing.data.type === 'uptime') {
-        const config = existing.data.config as HttpModeConfig | PortModeConfig;
+        const config = existing.data.config as HttpModeConfig | PortModeConfig | PingModeConfig | DnsModeConfig;
         setUptimeMode(config.mode);
         if (config.mode === 'http') setHttpConfig(config);
-        else setPortConfig(config);
+        else if (config.mode === 'port') setPortConfig(config);
+        else if (config.mode === 'ping') setPingConfig(config);
+        else setDnsConfig(config);
       } else if (existing.data.type === 'push') {
         setPushConfig(existing.data.config as PushConfig);
       } else {
@@ -147,10 +172,17 @@ export function CheckEditor(): JSX.Element {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deliberately excludes portConfig.host: this seeds an empty field once, it must not re-fire as the user types
   }, [appForTemplate.data]);
 
+  function currentUptimeConfig(): HttpModeConfig | PortModeConfig | PingModeConfig | DnsModeConfig {
+    if (uptimeMode === 'http') return httpConfig;
+    if (uptimeMode === 'port') return portConfig;
+    if (uptimeMode === 'ping') return pingConfig;
+    return dnsConfig;
+  }
+
   function buildBody(): CreateCheckBody {
     const base = { name, intervalMinutes, timeoutMs, failureThreshold, enabled };
     if (type === 'uptime') {
-      return { ...base, type: 'uptime', config: uptimeMode === 'http' ? httpConfig : portConfig } as CreateCheckBody;
+      return { ...base, type: 'uptime', config: currentUptimeConfig() } as CreateCheckBody;
     }
     if (type === 'push') return { ...base, type: 'push', config: pushConfig } as CreateCheckBody;
     return { ...base, type: 'journey', config: journeyConfig } as CreateCheckBody;
@@ -164,7 +196,7 @@ export function CheckEditor(): JSX.Element {
         appId,
         timeoutMs,
         type: 'uptime',
-        config: uptimeMode === 'http' ? httpConfig : portConfig,
+        config: currentUptimeConfig(),
       } as DryRunBody;
     }
     return { appId, timeoutMs, type: 'journey', config: journeyConfig } as DryRunBody;
@@ -326,6 +358,10 @@ export function CheckEditor(): JSX.Element {
         {type === 'uptime' && uptimeMode === 'port' && (
           <PortConfigFields config={portConfig} onChange={setPortConfig} />
         )}
+        {type === 'uptime' && uptimeMode === 'ping' && (
+          <PingConfigFields config={pingConfig} onChange={setPingConfig} />
+        )}
+        {type === 'uptime' && uptimeMode === 'dns' && <DnsConfigFields config={dnsConfig} onChange={setDnsConfig} />}
         {type === 'push' && (
           <div className="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-white/10">
             <p className="text-xs text-slate-500 dark:text-zinc-400">

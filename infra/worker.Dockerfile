@@ -15,6 +15,12 @@ RUN pnpm --filter @vyzus/shared build && pnpm --filter @vyzus/worker build \
  && pnpm --filter @vyzus/worker deploy --prod /out
 
 FROM mcr.microsoft.com/playwright:v1.62.1-noble
+# `ping` for the ICMP check mode. iputils uses an unprivileged ICMP datagram
+# socket, which Docker permits by default (net.ipv4.ping_group_range), so this
+# needs no CAP_NET_RAW — the container still runs as non-root pwuser below.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends iputils-ping \
+ && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /out .

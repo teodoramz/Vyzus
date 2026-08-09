@@ -10,6 +10,8 @@ import {
   DEFAULT_FAILURE_THRESHOLD,
   JOURNEY_SPEC_MAX_BYTES,
   DEFAULT_PUSH_GRACE_MINUTES,
+  DEFAULT_PING_PACKETS,
+  DNS_RECORD_TYPES,
 } from '../constants.js';
 import { isoTimestamp, uuidSchema } from './common.js';
 
@@ -117,6 +119,70 @@ export const portModeConfigSchema = z
   .strict();
 export type PortModeConfig = z.infer<typeof portModeConfigSchema>;
 
+/**
+ * `ping` — ICMP echo. Answers "is this host reachable at all", which a TCP port
+ * probe cannot: a host with every port closed is still up.
+ *
+ * Uses unprivileged ICMP (`SOCK_DGRAM`), so the worker needs no `CAP_NET_RAW`.
+ */
+export const pingModeConfigSchema = z
+  .object({
+    mode: z.literal('ping'),
+    host: z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((h) => !h.includes('://') && !h.includes('/'), {
+        message: 'Host only — no scheme or path',
+      }),
+    family: ipFamilySchema.default('auto'),
+    packets: z.number().int().min(1).max(10).default(DEFAULT_PING_PACKETS),
+    /**
+     * Fail when loss exceeds this percentage. 0 disables the check on loss, in
+     * which case only *total* loss (an unreachable host) fails — which is the
+     * plain "is it up" question and therefore the default. Raise it above 0 to
+     * also catch a degraded link that still answers some echoes.
+     */
+    maxPacketLossPercent: z.number().int().min(0).max(99).default(0),
+    /** Fail when average round-trip exceeds this. 0 disables it. */
+    maxRttMs: z.number().int().min(0).max(60_000).default(0),
+  })
+  .strict();
+export type PingModeConfig = z.infer<typeof pingModeConfigSchema>;
+
+/**
+ * `dns` — resolve a name and optionally assert what comes back. Catches the
+ * failure where the service is fine but nobody can find it: an expired domain,
+ * a botched record change, a hijacked zone.
+ */
+export const dnsModeConfigSchema = z
+  .object({
+    mode: z.literal('dns'),
+    /** The name to resolve, not a URL. */
+    host: z
+      .string()
+      .min(1)
+      .max(255)
+      .refine((h) => !h.includes('://') && !h.includes('/'), {
+        message: 'Hostname only — no scheme or path',
+      }),
+    recordType: z.enum(DNS_RECORD_TYPES).default('A'),
+    /**
+     * Query this resolver instead of the system one. Set it to compare what a
+     * specific nameserver returns — the usual way to catch a stale secondary
+     * or a propagation problem.
+     */
+    resolver: z.string().max(255).optional(),
+    /**
+     * Fail unless every one of these appears in the answer. Empty means "any
+     * successful resolution passes", which is the default: asserting the value
+     * is opt-in because a correct answer changes more often than it stays put.
+     */
+    expectedValues: z.array(z.string().min(1).max(500)).max(50).default([]),
+  })
+  .strict();
+export type DnsModeConfig = z.infer<typeof dnsModeConfigSchema>;
+
 // Configs stored before the http/port split (or built by hand) may omit
 // `mode` entirely — they're implicitly HTTP. Stamped on before the
 // discriminated union runs so old rows validate with no data migration.
@@ -127,7 +193,7 @@ export type PortModeConfig = z.infer<typeof portModeConfigSchema>;
 export const uptimeConfigSchema = z.preprocess(
   (val) => (val && typeof val === 'object' && !('mode' in val) ? { mode: 'http', ...val } : val),
   z
-    .discriminatedUnion('mode', [httpModeConfigSchema, portModeConfigSchema])
+    .discriminatedUnion('mode', [httpModeConfigSchema, portModeConfigSchema, pingModeConfigSchema, dnsModeConfigSchema])
     .refine((v) => !(v.mode === 'port' && v.tls && v.protocol === 'udp'), {
       message: 'TLS is only supported over TCP',
       path: ['tls'],

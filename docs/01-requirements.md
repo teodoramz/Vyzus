@@ -122,6 +122,26 @@
     misleading. Credentials never appear in error messages or metrics.
   - The login is given at most half the check timeout, so a hanging login cannot
     consume the whole budget.
+- FR-2.2b **Uptime check, `ping` mode**: ICMP echo. Answers "is this host reachable at
+  all", which a TCP port probe cannot — a machine with every port closed is still up, and
+  a router or appliance may expose no port worth probing.
+  - Uses unprivileged ICMP (`SOCK_DGRAM` via iputils), permitted by Docker's default
+    `net.ipv4.ping_group_range`, so the worker needs **no `CAP_NET_RAW`** and still runs
+    as non-root `pwuser`.
+  - A host answering nothing always fails. `maxPacketLossPercent` and `maxRttMs`
+    (both 0 = off) are opt-in on top of that, for a link that is degraded rather than down.
+- FR-2.2c **Uptime check, `dns` mode**: resolve a name and optionally assert the answer.
+  Catches the failure where the service is fine but nobody can find it — an expired
+  domain, a botched record change, a stale secondary, a hijacked zone. None of those show
+  up in an HTTP check run from a machine whose resolver still has the old answer cached.
+  - `recordType` covers A, AAAA, CNAME, MX, TXT, NS. `resolver` queries a specific
+    nameserver rather than the system one, which is how a stale secondary is caught.
+  - `expectedValues` matches as a substring, because an MX answer carries a priority and
+    a TXT value is often a long policy string — requiring the whole thing verbatim would
+    make the assertion unusable in exactly the cases people want it. Empty means any
+    successful resolution passes.
+  - A lookup failure (NXDOMAIN, timeout) is `failed`, not `error`: it is the answer, not
+    an infrastructure fault of ours.
 - FR-2.5 **Push (heartbeat) check**: the monitored job reports in, rather than Vyzus
   reaching out. Covers everything unreachable *from* the monitor — cron jobs, backup
   scripts, batch imports, hosts behind NAT.

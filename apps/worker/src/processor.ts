@@ -38,6 +38,8 @@ import { executeUptime } from './executors/uptime.js';
 import { executeJourney } from './executors/journey.js';
 import { executePort } from './executors/port.js';
 import { executePush } from './executors/push.js';
+import { executePing } from './executors/ping.js';
+import { executeDns } from './executors/dns.js';
 import type { ExecutionResult } from './executors/types.js';
 import { evaluateIncident } from './incidents.js';
 
@@ -194,6 +196,12 @@ export function createProcessor(deps: ProcessorDeps): {
       const uptimeConfig = uptimeConfigSchema.parse(check.config);
       if (uptimeConfig.mode === 'port') {
         return executePort({ config: uptimeConfig, timeoutMs: check.timeoutMs });
+      }
+      if (uptimeConfig.mode === 'ping') {
+        return executePing({ config: uptimeConfig, timeoutMs: check.timeoutMs });
+      }
+      if (uptimeConfig.mode === 'dns') {
+        return executeDns({ config: uptimeConfig, timeoutMs: check.timeoutMs });
       }
 
       // Evaluated by the executor once the outcome is known, so the policy can

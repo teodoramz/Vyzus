@@ -6,7 +6,8 @@
 
 Vyzus drives a real Chromium browser against your applications on a schedule,
 simulating what a user actually does, and tells you the moment something breaks.
-It monitors HTTP services, raw TCP/UDP ports and TLS certificates, runs recorded
+It monitors HTTP services, raw TCP/UDP ports, ICMP reachability, DNS records and TLS
+certificates, runs recorded
 **Playwright** user journeys, and gives you a dashboard with live status,
 response-time metrics, screenshots, incident history and alerting.
 
@@ -14,7 +15,7 @@ response-time metrics, screenshots, incident history and alerting.
 
 - **Enroll web applications** — name, landing URL, tags, optional encrypted credentials.
 - **Three kinds of checks per application:**
-  - **Uptime check**, in either of two modes:
+  - **Uptime check**, in any of four modes:
     - `http` — loads the page in a real browser, asserts HTTP status / CSS selector /
       body text / page title, records timing metrics (TTFB, DOMContentLoaded, full
       load), warns before the TLS certificate expires, and takes a screenshot.
@@ -24,6 +25,13 @@ response-time metrics, screenshots, incident history and alerting.
       certificate** (trust chain, expiry, hostname), warn a configurable number of days
       before that certificate expires, and an opt-in escape hatch for deliberately
       self-signed internal services.
+    - `ping` — ICMP echo: is the host reachable *at all*, which a port probe cannot
+      answer, since a machine with every port closed is still up. Optional packet-loss
+      and round-trip limits. Uses unprivileged ICMP, so it needs no extra container
+      capability.
+    - `dns` — resolve a record (A/AAAA/CNAME/MX/TXT/NS), optionally against a specific
+      resolver, and assert what comes back. Catches the expired domain or botched record
+      change that an HTTP check run from a machine with a warm cache cannot see.
   - **Heartbeat (push)** — for jobs Vyzus cannot reach: a cron job, backup script or
     host behind NAT `curl`s a token URL on success, and the check fails when nothing
     arrives within its interval plus a grace allowance.

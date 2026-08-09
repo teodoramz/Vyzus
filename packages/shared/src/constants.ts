@@ -15,7 +15,10 @@ export type CheckType = (typeof CHECK_TYPES)[number];
  * Both are "is the thing itself up" checks (unlike `journey`), so they share
  * the `uptime` check type and drive the app's Up/Down badge the same way —
  * only the config shape and executor differ. */
-export const UPTIME_MODES = ['http', 'port'] as const;
+// All four answer "is the thing reachable", so they share the `uptime` type and
+// its liveness semantics (they can mark an application DOWN); they differ only
+// in config shape and executor.
+export const UPTIME_MODES = ['http', 'port', 'ping', 'dns'] as const;
 export type UptimeMode = (typeof UPTIME_MODES)[number];
 
 export const PORT_PROTOCOLS = ['tcp', 'udp'] as const;
@@ -124,6 +127,12 @@ export const DEFAULT_RENOTIFY_MINUTES = 0;
  * the 5-minute mark, and without slack every such check would flap.
  */
 export const DEFAULT_PUSH_GRACE_MINUTES = 2;
+
+/** ICMP echoes per ping check. Enough to measure loss without being a burst. */
+export const DEFAULT_PING_PACKETS = 3;
+
+export const DNS_RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'NS'] as const;
+export type DnsRecordType = (typeof DNS_RECORD_TYPES)[number];
 
 export const DEFAULT_RETENTION = {
   runsDays: 90,
