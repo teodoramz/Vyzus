@@ -19,9 +19,26 @@ import {
   type AppStatus,
   type PublicAppStatus,
   type PublicIncident,
+  type StatusPage,
 } from '@vyzus/shared';
 import { applications, checks, incidents, runs, settings } from '../db/schema.js';
 import { deriveAppStatus, WINDOW_MS } from '../lib/queries.js';
+import { hitFixedWindow } from '../lib/fixed-window.js';
+import { tooManyRequests } from '../lib/errors.js';
+
+/**
+ * This is the only unauthenticated endpoint that touches the database, and it
+ * runs five queries per request. Without a cache it is a free amplification
+ * primitive: anyone can loop it and push load onto Postgres.
+ *
+ * The payload is derived from check results that change on check intervals
+ * (minutes), so a short cache costs nothing in freshness.
+ */
+const CACHE_KEY = 'vyzus:status-page';
+const CACHE_SECONDS = 30;
+/** Generous for humans and any CDN in front; only a script notices it. */
+const RATE_LIMIT = 60;
+const RATE_WINDOW_SECONDS = 60;
 
 /** Worst-first, so the headline reflects the most serious thing happening. */
 const SEVERITY: AppStatus[] = ['DOWN', 'DEGRADED', 'UNKNOWN', 'PAUSED', 'UP'];
@@ -32,7 +49,19 @@ function worst(statuses: AppStatus[]): AppStatus {
 }
 
 export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
-  app.get('/', { schema: { response: { 200: statusPageSchema } } }, async () => {
+  app.get('/', { schema: { response: { 200: statusPageSchema } } }, async (req, reply) => {
+    const limit = await hitFixedWindow(app.redis, `vyzus:status-rl:${req.ip}`, RATE_LIMIT, RATE_WINDOW_SECONDS);
+    if (!limit.allowed) {
+      reply.header('Retry-After', String(limit.retryAfterSeconds));
+      throw tooManyRequests('Too many requests', 'RATE_LIMITED');
+    }
+
+    // Lets a browser, proxy or CDN absorb repeat traffic before it reaches us.
+    reply.header('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
+
+    const cached = await app.redis.get(CACHE_KEY);
+    if (cached) return JSON.parse(cached) as StatusPage;
+
     const now = new Date();
 
     const [titleRow] = await app.db
@@ -44,13 +73,17 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
 
     const publicApps = await app.db.select().from(applications).where(eq(applications.isPublic, true));
     if (publicApps.length === 0) {
-      return {
+      const empty = {
         title,
         overall: 'UNKNOWN' as const,
         applications: [],
         recentIncidents: [],
         generatedAt: now.toISOString(),
       };
+      // Cached like any other result: publishing nothing is the default state,
+      // and it would be odd if the uncached path were the common one.
+      await app.redis.set(CACHE_KEY, JSON.stringify(empty), 'EX', CACHE_SECONDS);
+      return empty;
     }
 
     const appIds = publicApps.map((a) => a.id);
@@ -115,12 +148,14 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
         : null,
     }));
 
-    return {
+    const page = {
       title,
       overall: worst(applicationsOut.map((a) => a.status)),
       applications: applicationsOut,
       recentIncidents,
       generatedAt: now.toISOString(),
     };
+    await app.redis.set(CACHE_KEY, JSON.stringify(page), 'EX', CACHE_SECONDS);
+    return page;
   });
 };

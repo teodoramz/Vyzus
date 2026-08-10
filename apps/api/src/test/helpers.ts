@@ -114,11 +114,15 @@ export async function seedTestAdmin(ctx: TestContext): Promise<void> {
 
 export async function resetDb(ctx: TestContext): Promise<void> {
   await ctx.dbHandle.sql.unsafe(`TRUNCATE ${ALL_TABLES.join(', ')} RESTART IDENTITY CASCADE`);
-  // Login-throttle counters live in Redis, not Postgres, so truncating alone
-  // leaves them behind: a file that exhausts the budget locks out every later
-  // file's login with a 429. Redis is part of the isolation boundary too.
+  // Throttle counters and the status-page cache live in Redis, not Postgres, so
+  // truncating alone leaves them behind: a file that exhausts the login budget
+  // locks out every later file with a 429, and a stale cached status page
+  // outlives the rows it was built from. Redis is part of the isolation
+  // boundary too.
   const keys = await ctx.redis.keys('vyzus:login-throttle:*');
-  if (keys.length > 0) await ctx.redis.del(...keys);
+  const statusKeys = await ctx.redis.keys('vyzus:status-*');
+  const stale = [...keys, ...statusKeys];
+  if (stale.length > 0) await ctx.redis.del(...stale);
   await seedTestAdmin(ctx);
 }
 

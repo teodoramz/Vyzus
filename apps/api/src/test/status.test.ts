@@ -132,3 +132,47 @@ describe('GET /status', () => {
     expect(page.recentIncidents).toEqual([]);
   });
 });
+
+// The endpoint is unauthenticated and runs five queries, so it is the one place
+// where an anonymous caller can put load on Postgres. These two guard that.
+describe('GET /status — abuse resistance', () => {
+  it('serves repeat requests from cache instead of re-querying', async () => {
+    await seedApp({ name: 'Public', isPublic: true });
+    const first = (await get()).json();
+
+    // Publish a second application, then ask again inside the cache window: the
+    // unchanged answer proves the second request never reached the database.
+    await seedApp({ name: 'Second', isPublic: true });
+    const second = (await get()).json();
+    expect(second.generatedAt).toBe(first.generatedAt);
+    expect(second.applications).toHaveLength(1);
+
+    // Dropping the cache is enough to see the new application.
+    await ctx.redis.del('vyzus:status-page');
+    expect((await get()).json().applications).toHaveLength(2);
+  });
+
+  it('advertises the cache lifetime so proxies absorb repeat traffic', async () => {
+    await seedApp({ name: 'Public', isPublic: true });
+    expect((await get()).headers['cache-control']).toBe('public, max-age=30');
+  });
+
+  it('rate-limits a caller that loops the endpoint', async () => {
+    await seedApp({ name: 'Public', isPublic: true });
+    for (let i = 0; i < 60; i++) expect((await get()).statusCode).toBe(200);
+
+    const blocked = await get();
+    expect(blocked.statusCode).toBe(429);
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('limits each caller separately', async () => {
+    await seedApp({ name: 'Public', isPublic: true });
+    const from = (ip: string) =>
+      ctx.app.inject({ method: 'GET', url: '/api/v1/status', headers: { 'x-forwarded-for': ip } });
+
+    for (let i = 0; i < 61; i++) await from('203.0.113.7');
+    expect((await from('203.0.113.7')).statusCode).toBe(429);
+    expect((await from('203.0.113.8')).statusCode).toBe(200);
+  });
+});
