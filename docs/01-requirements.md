@@ -278,7 +278,7 @@
 - **NFR-5 Observability**: structured JSON logs (pino) everywhere; `/health` endpoints on api and worker; queue depth and run stats exposed at `/api/v1/stats`.
 - **NFR-6 Portability**: everything runs from `docker compose up` on any Linux host; no cloud dependencies.
 
-## 3. Explicitly out of scope (v1)
+## 3. Scope boundaries
 
 Deferred past v1 and since delivered: public status page, SSL-expiry checks,
 maintenance windows, email alerts. Still out of scope: multi-region probes, Telegram

@@ -141,7 +141,7 @@ Partial unique index `(check_id) WHERE resolved_at IS NULL` — max one open inc
 | id | uuid PK | |
 | name | text NOT NULL | |
 | type | enum `slack` \| `discord` \| `webhook` \| `email` | slack & discord differ only in payload shape |
-| config | jsonb NOT NULL | non-secret settings: `{ url }`, or SMTP host/port/from/to for `email` |
+| config | jsonb NOT NULL | non-secret settings: `{ url }`, or SMTP host/port/secure/username/from/to for `email` |
 | secrets_enc | text NULL | AES-256-GCM `{ secret?, password? }` — the webhook HMAC key and the SMTP password. NULL when the channel has neither |
 | enabled | boolean DEFAULT true | |
 | all_apps | boolean DEFAULT true | true → receives alerts for every application |
