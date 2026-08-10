@@ -8,8 +8,10 @@ import {
   testChannelResponseSchema,
   alertDeliveryListSchema,
   idParamSchema,
-  type ChannelConfig,
+  splitChannelSecrets,
+  type ChannelSecrets,
 } from '@vyzus/shared';
+import { decryptJson, encryptJson } from '../lib/crypto.js';
 import { alertChannels, appAlertChannels, alertDeliveries, users } from '../db/schema.js';
 import type { AlertChannelRow } from '../db/schema.js';
 import { toChannel } from '../lib/mappers.js';
@@ -83,11 +85,22 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
         await assertViewerChannelScope(user.id, allowedIds, { allApps, appIds });
         ownerId = user.id;
       }
-      const channelConfig: ChannelConfig = config;
+      // Credentials never reach the jsonb column — see shared/channel-secrets.ts.
+      const split = splitChannelSecrets(config);
+      const secretsEnc = split.secrets ? encryptJson(split.secrets, app.encryptionKey) : null;
       const row = await app.db.transaction(async (tx) => {
         const [inserted] = await tx
           .insert(alertChannels)
-          .values({ name, type, config: channelConfig, enabled, allApps, ownerId, createdBy: user.id })
+          .values({
+            name,
+            type,
+            config: split.config,
+            secretsEnc,
+            enabled,
+            allApps,
+            ownerId,
+            createdBy: user.id,
+          })
           .returning();
         if (!allApps && appIds.length > 0) {
           await tx.insert(appAlertChannels).values(appIds.map((appId) => ({ appId, channelId: inserted!.id })));
@@ -120,7 +133,22 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
       const patch: Partial<typeof alertChannels.$inferInsert> = {};
       if (b.name !== undefined) patch.name = b.name;
       if (b.type !== undefined) patch.type = b.type;
-      if (b.config !== undefined) patch.config = b.config;
+      if (b.config !== undefined) {
+        const split = splitChannelSecrets(b.config);
+        patch.config = split.config;
+        // A submitted config with no credential means "leave the stored one
+        // alone" — the dashboard sends blank fields to keep the existing
+        // secret, exactly as it does for application credentials.
+        if (split.secrets) patch.secretsEnc = encryptJson(split.secrets, app.encryptionKey);
+      }
+      // A webhook signing secret means nothing to an SMTP transport. Changing
+      // the type makes the stored credential meaningless, so drop it rather
+      // than leave a blob nobody can account for — unless this same request
+      // supplied a replacement. `type` may arrive without `config`, so this
+      // cannot live in the branch above.
+      if (b.type !== undefined && b.type !== existing.type && patch.secretsEnc === undefined) {
+        patch.secretsEnc = null;
+      }
       if (b.enabled !== undefined) patch.enabled = b.enabled;
       if (b.allApps !== undefined) patch.allApps = b.allApps;
 
@@ -159,9 +187,14 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
       const [row] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, req.params.id)).limit(1);
       if (!row) throw notFound('Channel not found');
       assertChannelOwnership(req.authUser!, row);
-      const outcome = await deliverToChannel(row, sampleAlertPayload(app.config.PUBLIC_URL), app.config.PUBLIC_URL, {
-        maxAttempts: 1,
-      });
+      const secrets = row.secretsEnc ? decryptJson<ChannelSecrets>(row.secretsEnc, app.encryptionKey) : null;
+      const outcome = await deliverToChannel(
+        row,
+        secrets,
+        sampleAlertPayload(app.config.PUBLIC_URL),
+        app.config.PUBLIC_URL,
+        { maxAttempts: 1 },
+      );
       return { ok: outcome.ok, responseCode: outcome.responseCode };
     },
   );

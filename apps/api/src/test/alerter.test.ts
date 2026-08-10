@@ -7,7 +7,7 @@ import { beforeAll, afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { Queue } from 'bullmq';
 import { eq } from 'drizzle-orm';
 import { pino } from 'pino';
-import { QUEUE_NAMES, ALERT_SIGNATURE_HEADER, type AlertJobPayload } from '@vyzus/shared';
+import { QUEUE_NAMES, ALERT_SIGNATURE_HEADER, type AlertJobPayload, type Channel } from '@vyzus/shared';
 import {
   alertChannels,
   alertDeliveries,
@@ -18,6 +18,7 @@ import {
   incidents,
   runs,
 } from '../db/schema.js';
+import { decryptJson, encryptJson } from '../lib/crypto.js';
 import { startAlerter, renderAlertBody, sampleAlertPayload } from '../services/alerter.js';
 import {
   buildTestApp,
@@ -27,6 +28,7 @@ import {
   authHeader,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  makeTestConfig,
   type TestContext,
 } from './helpers.js';
 
@@ -142,6 +144,7 @@ async function enqueueAndProcess(payload: AlertJobPayload): Promise<void> {
     connection: ctx.redis,
     db: ctx.dbHandle.db,
     publicUrl: 'http://localhost:8080',
+    encryptionKey: makeTestConfig().ENCRYPTION_KEY,
     log: pino({ level: 'silent' }),
     backoffBaseMs: 10, // fast retries in tests
   });
@@ -191,7 +194,14 @@ describe('alerter queue consumer', () => {
     const { app, incident } = await seedIncident();
     await ctx.dbHandle.db.insert(alertChannels).values([
       { name: 'slack', type: 'slack', config: { url: `${listener.url}/slack` }, allApps: true },
-      { name: 'hook', type: 'webhook', config: { url: `${listener.url}/hook`, secret: 'tops3cret' }, allApps: true },
+      {
+        name: 'hook',
+        type: 'webhook',
+        config: { url: `${listener.url}/hook` },
+        // The signing secret lives encrypted beside the config, never in it.
+        secretsEnc: encryptJson({ secret: 'tops3cret' }, makeTestConfig().ENCRYPTION_KEY),
+        allApps: true,
+      },
       { name: 'disabled', type: 'webhook', config: { url: `${listener.url}/disabled` }, enabled: false, allApps: true },
     ]);
 
@@ -388,5 +398,149 @@ describe('POST /channels/:id/test', () => {
 
     const req = listener.requests.find((r) => r.path === '/test-route')!;
     expect(JSON.parse(req.body)).toHaveProperty('embeds'); // rendered, not raw
+  });
+});
+
+// Channel credentials — the SMTP password and the webhook signing secret — are
+// stored encrypted in their own column rather than in the plain jsonb config,
+// so a database dump or a stray `select *` never carries a live credential.
+describe('channel credential storage', () => {
+  async function createChannel(payload: Record<string, unknown>): Promise<{ id: string; body: Channel }> {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const res = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/channels',
+      headers: authHeader(accessToken),
+      payload,
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json() as Channel;
+    return { id: body.id, body };
+  }
+
+  it('keeps the signing secret out of the config column', async () => {
+    const { id, body } = await createChannel({
+      name: 'signed',
+      type: 'webhook',
+      config: { url: `${listener.url}/signed`, secret: 'tops3cret' },
+    });
+
+    const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
+    expect(JSON.stringify(row!.config)).not.toContain('tops3cret');
+    expect(row!.secretsEnc).not.toBeNull();
+    expect(row!.secretsEnc).not.toContain('tops3cret');
+    // The response says a secret exists without ever echoing it back.
+    expect(body.hasSecret).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('tops3cret');
+  });
+
+  it('signs deliveries with the stored secret', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { id } = await createChannel({
+      name: 'signed',
+      type: 'webhook',
+      config: { url: `${listener.url}/signed-delivery`, secret: 'tops3cret' },
+    });
+
+    await ctx.app.inject({
+      method: 'POST',
+      url: `/api/v1/channels/${id}/test`,
+      headers: authHeader(accessToken),
+    });
+
+    const req = listener.requests.find((r) => r.path === '/signed-delivery')!;
+    const sig = req.headers[ALERT_SIGNATURE_HEADER.toLowerCase()] as string;
+    expect(sig).toBe(createHmac('sha256', 'tops3cret').update(req.body).digest('hex'));
+  });
+
+  it('keeps the existing secret when an edit submits none', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { id } = await createChannel({
+      name: 'signed',
+      type: 'webhook',
+      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+    });
+
+    // The dashboard never receives the secret, so an unchanged edit sends the
+    // config without it — that must not silently unsign the channel.
+    const res = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/channels/${id}`,
+      headers: authHeader(accessToken),
+      payload: { config: { url: `${listener.url}/b` } },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().hasSecret).toBe(true);
+
+    const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
+    expect(decryptJson<{ secret?: string }>(row!.secretsEnc!, makeTestConfig().ENCRYPTION_KEY).secret).toBe(
+      'tops3cret',
+    );
+  });
+
+  it('replaces the secret when an edit submits a new one', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { id } = await createChannel({
+      name: 'signed',
+      type: 'webhook',
+      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+    });
+
+    await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/channels/${id}`,
+      headers: authHeader(accessToken),
+      payload: { config: { url: `${listener.url}/a`, secret: 'rotated' } },
+    });
+
+    const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
+    expect(decryptJson<{ secret?: string }>(row!.secretsEnc!, makeTestConfig().ENCRYPTION_KEY).secret).toBe('rotated');
+  });
+
+  // A webhook secret means nothing to an SMTP transport, so carrying it across
+  // a type change would leave a credential nobody can account for.
+  it('drops the stored credential when the channel type changes', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const { id } = await createChannel({
+      name: 'signed',
+      type: 'webhook',
+      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+    });
+
+    const res = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/channels/${id}`,
+      headers: authHeader(accessToken),
+      // `type` alone, with no config: the update schema allows it, so the drop
+      // cannot depend on a config being submitted alongside.
+      payload: { type: 'slack' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().hasSecret).toBe(false);
+
+    const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
+    expect(row!.secretsEnc).toBeNull();
+  });
+
+  it('gives an SMTP password the same treatment', async () => {
+    const { id, body } = await createChannel({
+      name: 'mail',
+      type: 'email',
+      config: {
+        host: 'smtp.example.com',
+        port: 587,
+        secure: false,
+        from: 'vyzus@example.com',
+        to: ['ops@example.com'],
+        username: 'vyzus',
+        password: 'smtp-p4ssword',
+      },
+    });
+
+    const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
+    expect(JSON.stringify(row!.config)).not.toContain('smtp-p4ssword');
+    expect(row!.secretsEnc).not.toBeNull();
+    expect(body.hasPassword).toBe(true);
+    expect(JSON.stringify(body)).not.toContain('smtp-p4ssword');
   });
 });

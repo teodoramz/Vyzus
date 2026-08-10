@@ -37,6 +37,7 @@ async function main(): Promise<void> {
     connection: redis,
     db: dbHandle.db,
     publicUrl: config.PUBLIC_URL,
+    encryptionKey: config.ENCRYPTION_KEY,
     log,
   });
 

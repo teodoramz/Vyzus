@@ -1,0 +1,1 @@
+ALTER TABLE "alert_channels" ADD COLUMN "secrets_enc" text;

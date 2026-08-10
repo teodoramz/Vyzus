@@ -191,7 +191,13 @@ export const alertChannels = pgTable('alert_channels', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name').notNull(),
   type: channelTypeEnum('type').notNull(),
+  // Non-secret settings only. The webhook signing secret and the SMTP password
+  // are stripped out and stored encrypted below, so a database dump or a stray
+  // `select *` never carries a live credential.
   config: jsonb('config').$type<ChannelConfig>().notNull(),
+  // AES-256-GCM blob of `{ secret?, password? }`, same scheme and key as
+  // applications.auth_config_enc. NULL when the channel has neither.
+  secretsEnc: text('secrets_enc'),
   enabled: boolean('enabled').notNull().default(true),
   allApps: boolean('all_apps').notNull().default(true),
   // NULL = an admin/editor-managed "global" channel (unchanged v1 behavior).

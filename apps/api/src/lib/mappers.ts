@@ -74,8 +74,11 @@ export function toChannel(row: AlertChannelRow, appIds: string[], createdByEmail
     name: row.name,
     type: row.type,
     url: isEmailChannelConfig(row.config) ? null : row.config.url,
-    hasSecret: !isEmailChannelConfig(row.config) && row.config.secret != null,
-    hasPassword: isEmailChannelConfig(row.config) && row.config.password != null,
+    // Derived from the channel type plus the presence of the encrypted blob,
+    // so listing channels never has to decrypt anything. A webhook's stored
+    // credential is a signing secret; an email channel's is an SMTP password.
+    hasSecret: row.type === 'webhook' && row.secretsEnc != null,
+    hasPassword: row.type === 'email' && row.secretsEnc != null,
     target: isEmailChannelConfig(row.config)
       ? `${row.config.host}:${row.config.port} → ${row.config.to.join(', ')}`
       : row.config.url,

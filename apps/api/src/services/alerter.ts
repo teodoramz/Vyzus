@@ -17,6 +17,8 @@ import {
   alertJobPayloadSchema,
   isMonitoringAlert,
   isEmailChannelConfig,
+  mergeChannelSecrets,
+  type ChannelSecrets,
   activeMaintenanceWindow,
   findFailingAncestor,
   type AlertWebhookPayload,
@@ -26,6 +28,7 @@ import {
   type ChannelType,
 } from '@vyzus/shared';
 import type { Database } from '../db/index.js';
+import { decryptJson } from '../lib/crypto.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import {
   alertChannels,
@@ -311,6 +314,11 @@ export interface DeliveryOutcome {
  */
 export async function deliverToChannel(
   channel: Pick<AlertChannelRow, 'type' | 'config'>,
+  /**
+   * Decrypted credentials, or null when the channel has none. Required rather
+   * than optional so a new call site cannot silently deliver unsigned.
+   */
+  secrets: ChannelSecrets | null,
   payload: AlertWebhookPayload,
   publicUrl: string,
   opts: { maxAttempts?: number; backoffBaseMs?: number; timeoutMs?: number } = {},
@@ -322,10 +330,14 @@ export async function deliverToChannel(
   // Email is SMTP, not an HTTP POST, so it needs its own transport — but it
   // reuses the same retry/backoff loop and reports the same DeliveryOutcome, so
   // `alert_deliveries` logging upstream stays identical for every channel type.
-  if (isEmailChannelConfig(channel.config)) {
-    return deliverByEmail(channel.config, payload, publicUrl, { maxAttempts, backoffBaseMs, timeoutMs });
+  // Credentials live encrypted in their own column; rejoin them only here, at
+  // the point of use, so they exist in memory for as short a span as possible.
+  const full = mergeChannelSecrets(channel.config, secrets);
+
+  if (isEmailChannelConfig(full)) {
+    return deliverByEmail(full, payload, publicUrl, { maxAttempts, backoffBaseMs, timeoutMs });
   }
-  const config = channel.config;
+  const config = full;
 
   const body = JSON.stringify(renderAlertBody(channel.type, payload, publicUrl));
   const headers: Record<string, string> = { 'content-type': 'application/json' };
@@ -397,6 +409,8 @@ export interface AlerterOptions {
   connection: Redis;
   db: Database;
   publicUrl: string;
+  /** Hex AES key for the per-channel credential blobs. */
+  encryptionKey: string;
   log: FastifyBaseLogger;
   /** Test override for the retry backoff base. */
   backoffBaseMs?: number;
@@ -442,7 +456,7 @@ async function findFailingUpstream(db: Database, appId: string): Promise<{ name:
 }
 
 export function startAlerter(options: AlerterOptions): Worker {
-  const { connection, db, publicUrl, log } = options;
+  const { connection, db, publicUrl, encryptionKey, log } = options;
 
   const worker = new Worker(
     QUEUE_NAMES.alerts,
@@ -552,7 +566,16 @@ export function startAlerter(options: AlerterOptions): Worker {
               );
 
       for (const { channel } of channelRows) {
-        const outcome = await deliverToChannel(channel, payload, publicUrl, {
+        // An unreadable blob — a rotated key, a truncated column — must cost
+        // this one channel, not the whole incident: throwing here would abandon
+        // every channel after it with no delivery row to show for it.
+        let secrets: ChannelSecrets | null = null;
+        try {
+          if (channel.secretsEnc) secrets = decryptJson<ChannelSecrets>(channel.secretsEnc, encryptionKey);
+        } catch {
+          log.error({ channelId: channel.id }, 'unreadable channel credentials — delivering without them');
+        }
+        const outcome = await deliverToChannel(channel, secrets, payload, publicUrl, {
           ...(options.backoffBaseMs !== undefined ? { backoffBaseMs: options.backoffBaseMs } : {}),
         });
         await db.insert(alertDeliveries).values({
