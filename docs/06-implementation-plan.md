@@ -93,9 +93,9 @@ since. **Delivered after 1.0.0:** certificate expiry warnings (port *and* http c
 maintenance windows · email (SMTP) channels · CI/CD pipelines · latency thresholds
 (performance budgets) · visual regression · API tokens · push/heartbeat checks ·
 still-down reminders · a dead-man's switch for the platform itself · session login for
-authenticated targets · HTTPS deployment.
+authenticated targets · HTTPS deployment · ICMP ping and DNS monitors · parent/child
+dependency suppression · a public status page.
 
-**Still open:** public status page · ICMP ping and DNS monitors · group monitors with
-parent/child suppression · Telegram and other notification integrations (an Apprise
-bridge would buy most of them at once) · multi-region probes · hourly rollup table ·
-S3/MinIO artifacts · Kubernetes/Helm · multi-step journey timing breakdown.
+**Still open:** Telegram and other notification integrations (an Apprise bridge would
+buy most of them at once) · multi-region probes · hourly rollup table · S3/MinIO
+artifacts · Kubernetes/Helm · multi-step journey timing breakdown.

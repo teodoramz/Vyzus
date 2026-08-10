@@ -88,6 +88,9 @@ never re-parsed on read, so `email` was added with no migration for existing row
 | `webhook` | `{ url, secret? }` — `secret` enables `X-Vyzus-Signature` |
 | `email` | `{ host, port, secure, username?, password?, from, to[] }` — SMTP |
 
+`secret` and `password` are stored encrypted in `alert_channels.secrets_enc`, never in
+`config`. On `PATCH`, omitting them keeps the stored value; changing `type` discards it.
+
 Responses never return a credential: `url` is null for `email`, `hasSecret` reports a
 webhook signing secret, `hasPassword` reports an SMTP password (deliberately separate —
 they are different claims), and `target` is a display string for the channel list.
@@ -97,6 +100,7 @@ they are different claims), and `target` is a display string for the channel lis
 |---|---|
 | `GET /stats` | `{ apps: { total, up, degraded, down, paused }, openIncidents, queueDepth, runsLast24h, monitoringStalledSince }` — header bar. **Viewer-scoped**: every count except `queueDepth` (a platform-wide operational number, not app data) is restricted to assigned apps. `monitoringStalledSince` is also platform-wide: a stalled platform is stalled for every viewer |
 | `GET /health` | liveness (checks DB + Redis ping); unauthenticated |
+| `GET /status` | public status page; unauthenticated. Cached 30s (`Cache-Control: public, max-age=30`) and limited to 60 req/min per client IP — it is the only anonymous endpoint that queries the database. Over the limit: `429` with `Retry-After` |
 | `GET/PATCH /settings` | retention windows plus `heartbeatStallMinutes` (dead-man's switch) and `renotifyMinutes` (still-down reminders). Read by any authenticated user; PATCH is admin-only |
 
 ## API tokens

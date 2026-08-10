@@ -162,6 +162,9 @@ container boundary is the security boundary (see §7).
   httpOnly cookie); role check middleware on every mutating route.
 - **App credentials** (basic auth/headers for protected targets): AES-256-GCM encrypted
   with `ENCRYPTION_KEY` env; decrypted only in the worker at run time.
+- **Channel credentials** (webhook signing secret, SMTP password): same scheme and key,
+  in `alert_channels.secrets_enc`. Kept out of the plain `config` jsonb so a database
+  dump carries no live credential; decrypted in the API at delivery time.
 - **Artifacts**: served by the API behind auth (`GET /api/v1/runs/:id/artifacts/:name`),
   never as a public static dir.
 - **Network**: only `dashboard` publishes a host port. api/postgres/redis are reachable

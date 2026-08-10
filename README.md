@@ -45,7 +45,8 @@ response-time metrics, screenshots, incident history and alerting.
   response-time charts, run history, screenshot gallery, incident timeline.
 - **On-demand screenshot** — one click captures the landing page *right now*.
 - **Alerting** — email (SMTP), Slack/Discord webhooks, and generic JSON webhooks on
-  down/recovery, with a configurable consecutive-failure threshold.
+  down/recovery, with a configurable consecutive-failure threshold. Signing secrets and
+  SMTP passwords are encrypted at rest.
 - **Session login** — for targets behind a normal login form: Vyzus signs in with a
   real browser first, so the check runs against the authenticated page rather than the
   login screen. Credentials are encrypted at rest.
@@ -56,7 +57,8 @@ response-time metrics, screenshots, incident history and alerting.
 - **Dependency suppression** — mark an application as sitting behind another; while the
   upstream is down, everything behind it stays quiet instead of paging once per service.
 - **Public status page** — an unauthenticated `/status` view of the applications you
-  explicitly publish: name, status and uptime only, never URLs or error text.
+  explicitly publish: name, status and uptime only, never URLs or error text. Cached for
+  30 seconds and rate-limited, so publishing it does not expose the database to load.
 - **Dead-man's switch** — alerts if the platform itself stops running checks. It cannot
   report its own API being down, so pair it with an external check on `/api/v1/health` —
   see [Monitoring the monitor](docs/05-infrastructure.md#monitoring-the-monitor).
@@ -209,12 +211,9 @@ Start with the [user guide](docs/07-user-guide.md) if you want to run it, or
 
 ## CI
 
-GitHub Actions run on every push/PR:
-
-They run **on every push to `main`, on pull requests, and on demand**, so any commit
-— including one that never went through a PR — gets a verdict you can look at. Use
-*Run workflow* in the Actions tab to check a branch at any time; a manual run skips
-the path filtering and executes every job.
+Workflows run on every push to `main`, on pull requests, and on demand, so every
+commit gets a verdict — including one that never went through a PR. *Run workflow* in
+the Actions tab checks any branch and skips path filtering, executing every job.
 
 - **CI** (push to main, pull requests, manual) — ESLint + Prettier, build, strict typecheck, and
   the full integration test suite (real Postgres/Redis/BullMQ/Chromium), all three

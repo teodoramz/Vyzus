@@ -111,6 +111,10 @@
   - Does not consult `lib/access.ts`: that layer answers "what may this *user* see", and
     there is no user. Passing it a null user would be the kind of shortcut that becomes
     a leak the first time its defaults change.
+  - Cached 30s and rate-limited to 60 requests per minute per client IP. It is the only
+    unauthenticated endpoint that queries the database, and it runs five queries per
+    request; uncached, it is a free amplification primitive. Status is derived from check
+    results that change on check intervals, so the cache costs no useful freshness.
 - FR-5.4 **Maintenance windows**: a scheduled window suppresses alert *delivery* for one
   application, or platform-wide (admin only), between `startsAt` and `endsAt` (half-open,
   so adjacent windows leave no unsuppressed instant).
@@ -267,12 +271,15 @@
 - **NFR-3 Reliability**: worker crash mid-run → BullMQ marks the job stalled and it is retried once; API and worker restart automatically (`restart: unless-stopped`).
 - **NFR-4 Security**:
   - Journey specs are **arbitrary code** — they execute only inside the worker container (no privileges, no host mounts other than the artifacts volume, non-root user) in a separate child process per run, with hard timeout and output limits. Only authenticated `editor`/`admin` users can create specs. See 02-architecture §7.
-  - Secrets (app credentials/headers) encrypted at rest (AES-256-GCM, key from env).
+  - Secrets encrypted at rest (AES-256-GCM, key from env): app credentials and headers,
+    plus alert-channel signing secrets and SMTP passwords. None of it is ever returned
+    by the API — responses carry boolean presence flags instead.
   - JWT secrets, DB password etc. only via env; nothing baked into images.
 - **NFR-5 Observability**: structured JSON logs (pino) everywhere; `/health` endpoints on api and worker; queue depth and run stats exposed at `/api/v1/stats`.
 - **NFR-6 Portability**: everything runs from `docker compose up` on any Linux host; no cloud dependencies.
 
 ## 3. Explicitly out of scope (v1)
 
-- Multi-region probes, public status page, SSL-expiry checks, maintenance windows,
-  email/Telegram alerts, SSO — all listed in 06-implementation-plan §Backlog as v2 candidates.
+Deferred past v1 and since delivered: public status page, SSL-expiry checks,
+maintenance windows, email alerts. Still out of scope: multi-region probes, Telegram
+and other integrations, SSO. See 06-implementation-plan §Backlog.

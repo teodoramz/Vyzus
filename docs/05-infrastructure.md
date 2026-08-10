@@ -126,7 +126,8 @@ AEAD ciphers, session tickets off, client cipher preference.
 
 ## Environment variables (`.env`)
 See `.env.example`. Notable:
-- `ENCRYPTION_KEY` — 32-byte hex; app credentials become unreadable if lost/rotated.
+- `ENCRYPTION_KEY` — 32-byte hex; app credentials and alert-channel secrets become
+  unreadable if lost/rotated.
 - No admin credentials live in the environment. The first administrator is
   created through the dashboard's first-boot setup screen (`POST /auth/setup`),
   which is gated on the users table being empty and is permanently rejected
