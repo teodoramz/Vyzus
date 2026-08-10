@@ -12,11 +12,17 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  # Supersede in-flight PR runs — only the latest push to a branch matters there.
-  # Never cancel a push to main: each commit is supposed to get its own verdict,
-  # and a rapid follow-up (especially a docs-only one, which legitimately skips
-  # the code jobs) would otherwise leave the previous commit's code unverified.
+  # Per-commit for pushes, per-ref for pull requests.
+  #
+  # `cancel-in-progress: false` alone is not enough: a group holds one running
+  # run plus one queued run, and a third arrival evicts the queued one. Three
+  # pushes to main in quick succession therefore lost the middle commit's run
+  # to a cancellation. Giving each pushed commit its own group removes the
+  # contention entirely, which is what "every commit gets a verdict" requires.
+  #
+  # Pull requests keep sharing a group so a new push supersedes the in-flight
+  # run — there, only the head commit's verdict matters.
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 permissions:
