@@ -119,9 +119,8 @@ export async function resetDb(ctx: TestContext): Promise<void> {
   // locks out every later file with a 429, and a stale cached status page
   // outlives the rows it was built from. Redis is part of the isolation
   // boundary too.
-  const keys = await ctx.redis.keys('vyzus:login-throttle:*');
-  const statusKeys = await ctx.redis.keys('vyzus:status-*');
-  const stale = [...keys, ...statusKeys];
+  const patterns = ['vyzus:login-throttle:*', 'vyzus:status-*', 'vyzus:push-rl:*'];
+  const stale = (await Promise.all(patterns.map((p) => ctx.redis.keys(p)))).flat();
   if (stale.length > 0) await ctx.redis.del(...stale);
   await seedTestAdmin(ctx);
 }

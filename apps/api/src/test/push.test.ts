@@ -119,6 +119,26 @@ describe('POST /push/:token', () => {
     expect(rowB!.lastPingAt).not.toBeNull();
   });
 
+  // Unauthenticated and it writes: nothing else caps how fast attempts arrive.
+  it('rate-limits a caller that floods the endpoint', async () => {
+    const from = (ip: string) =>
+      ctx.app.inject({
+        method: 'GET',
+        url: '/api/v1/push/definitely-not-a-real-token',
+        headers: { 'x-forwarded-for': ip },
+      });
+
+    for (let i = 0; i < 120; i++) expect((await from('198.51.100.4')).statusCode).toBe(404);
+
+    const blocked = await from('198.51.100.4');
+    expect(blocked.statusCode).toBe(429);
+    expect(Number(blocked.headers['retry-after'])).toBeGreaterThan(0);
+
+    // A different host is unaffected — one noisy sender must not silence
+    // everyone else's heartbeats.
+    expect((await from('198.51.100.5')).statusCode).toBe(404);
+  });
+
   it('rejects a token that is too short to be one of ours', async () => {
     const res = await ctx.app.inject({ method: 'POST', url: '/api/v1/push/short' });
     expect(res.statusCode).toBe(400);

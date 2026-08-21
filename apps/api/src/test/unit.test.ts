@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { encryptJson, decryptJson } from '../lib/crypto.js';
+import { SignJWT } from 'jose';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
 import { loadConfig } from '../config.js';
@@ -166,7 +167,23 @@ describe('TokenService', () => {
     const tokens = new TokenService('secret-secret-secret-1234', '15m', 7);
     const token = await tokens.signAccessToken({ sub: 'u1', role: 'admin', email: 'a@b.c' });
     const claims = await tokens.verifyAccessToken(token);
-    expect(claims).toEqual({ sub: 'u1', role: 'admin', email: 'a@b.c' });
+    expect(claims).toMatchObject({ sub: 'u1', role: 'admin', email: 'a@b.c' });
+    // The expiry is part of the contract: plugins/ws.ts closes a live socket
+    // on it, and a missing one would read as "never expires".
+    const ttlMs = claims.expiresAt.getTime() - Date.now();
+    expect(ttlMs).toBeGreaterThan(14 * 60_000);
+    expect(ttlMs).toBeLessThanOrEqual(15 * 60_000);
+  });
+
+  it('rejects an access token with no expiry', async () => {
+    const secret = 'secret-secret-secret-1234';
+    const tokens = new TokenService(secret, '15m', 7);
+    const noExp = await new SignJWT({ role: 'admin', email: 'a@b.c' })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject('u1')
+      .setIssuedAt()
+      .sign(new TextEncoder().encode(secret));
+    await expect(tokens.verifyAccessToken(noExp)).rejects.toThrow();
   });
 
   it('produces distinct refresh tokens with matching hashes', async () => {

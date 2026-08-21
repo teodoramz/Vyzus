@@ -12,10 +12,24 @@ import { sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { checks } from '../db/schema.js';
-import { notFound } from '../lib/errors.js';
+import { notFound, tooManyRequests } from '../lib/errors.js';
+import { hitFixedWindow } from '../lib/fixed-window.js';
 
 const paramsSchema = z.object({ token: z.string().min(16).max(128) });
 const responseSchema = z.object({ ok: z.literal(true) });
+
+/**
+ * Unauthenticated and it writes, so it is rate-limited like the status page.
+ * Guessing a token is hopeless (32 bytes of CSPRNG), but every attempt still
+ * costs an UPDATE, and nothing else here caps how fast they can arrive.
+ *
+ * Per client IP rather than per token: an invalid token has no identity to
+ * count against, and that is exactly the traffic worth capping. The limit is
+ * far above real use — heartbeats arrive on check intervals measured in
+ * minutes, so even a host reporting for dozens of checks stays well under it.
+ */
+const RATE_LIMIT = 120;
+const RATE_WINDOW_SECONDS = 60;
 
 export const pushRoutes: FastifyPluginAsyncZod = async (app) => {
   async function recordPing(token: string): Promise<void> {
@@ -40,7 +54,12 @@ export const pushRoutes: FastifyPluginAsyncZod = async (app) => {
       method,
       url: '/:token',
       schema: { params: paramsSchema, response: { 200: responseSchema } },
-      handler: async (req) => {
+      handler: async (req, reply) => {
+        const limit = await hitFixedWindow(app.redis, `vyzus:push-rl:${req.ip}`, RATE_LIMIT, RATE_WINDOW_SECONDS);
+        if (!limit.allowed) {
+          reply.header('Retry-After', String(limit.retryAfterSeconds));
+          throw tooManyRequests('Too many heartbeat requests', 'RATE_LIMITED');
+        }
         await recordPing((req.params as { token: string }).token);
         return { ok: true as const };
       },
