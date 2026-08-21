@@ -99,3 +99,11 @@ dependency suppression · a public status page.
 **Still open:** Telegram and other notification integrations (an Apprise bridge would
 buy most of them at once) · multi-region probes · hourly rollup table · S3/MinIO
 artifacts · Kubernetes/Helm · multi-step journey timing breakdown.
+
+**Known and accepted:** `POST /channels/:id/test` reports whether a caller-supplied URL
+answered and with what status, so any account holder can use it to probe hosts the API
+container can reach. Loopback and link-local are refused
+(`packages/shared/src/webhook-host.ts`); private ranges are deliberately allowed,
+because notifying a self-hosted service on the LAN is the normal deployment. The guard
+matches the literal hostname, so a name that resolves to a blocked address is not caught.
+Options for closing it are in the tracking issue.
