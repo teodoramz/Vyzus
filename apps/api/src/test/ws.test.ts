@@ -31,6 +31,11 @@ afterAll(async () => {
   await closeTestApp(ctx);
 });
 
+/** Connect the way the dashboard does: token in Sec-WebSocket-Protocol. */
+function connect(token: string): WebSocket {
+  return new WebSocket(`${baseUrl}/ws`, ['vyzus.v1', `vyzus.auth.${token}`]);
+}
+
 function nextMessage(socket: WebSocket, timeoutMs = 5000): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error('WS message timeout')), timeoutMs);
@@ -43,11 +48,11 @@ function nextMessage(socket: WebSocket, timeoutMs = 5000): Promise<Record<string
 
 describe('GET /ws', () => {
   it('closes the socket for a missing/invalid token', async () => {
-    const noToken = new WebSocket(`${baseUrl}/ws`);
+    const noToken = new WebSocket(`${baseUrl}/ws`, ['vyzus.v1']);
     const code1 = await new Promise<number>((resolve) => noToken.on('close', resolve));
     expect(code1).toBe(4401);
 
-    const badToken = new WebSocket(`${baseUrl}/ws?token=garbage`);
+    const badToken = new WebSocket(`${baseUrl}/ws`, ['vyzus.v1', 'vyzus.auth.garbage']);
     const code2 = await new Promise<number>((resolve) => badToken.on('close', resolve));
     expect(code2).toBe(4401);
   });
@@ -65,7 +70,7 @@ describe('GET /ws', () => {
       .setExpirationTime(Math.floor(Date.now() / 1000) + 1)
       .sign(new TextEncoder().encode(makeTestConfig().JWT_SECRET));
 
-    const socket = new WebSocket(`${baseUrl}/ws?token=${shortLived}`);
+    const socket = connect(shortLived);
     await new Promise<void>((resolve) => socket.on('open', resolve));
 
     const code = await new Promise<number>((resolve, reject) => {
@@ -78,9 +83,18 @@ describe('GET /ws', () => {
     expect(code).toBe(4401);
   });
 
+  // The token used to ride in the query string, where nginx and every proxy in
+  // front of it log the whole URL. That form must not keep working.
+  it('does not accept a token in the query string', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const socket = new WebSocket(`${baseUrl}/ws?token=${accessToken}`, ['vyzus.v1']);
+    const code = await new Promise<number>((resolve) => socket.on('close', resolve));
+    expect(code).toBe(4401);
+  });
+
   it('forwards run.finished pub/sub events to authenticated clients', async () => {
     const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
-    const socket = new WebSocket(`${baseUrl}/ws?token=${accessToken}`);
+    const socket = connect(accessToken);
     await new Promise<void>((resolve, reject) => {
       socket.on('open', resolve);
       socket.on('error', reject);
@@ -106,7 +120,7 @@ describe('GET /ws', () => {
 
   it('drops malformed pub/sub messages instead of forwarding them', async () => {
     const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
-    const socket = new WebSocket(`${baseUrl}/ws?token=${accessToken}`);
+    const socket = connect(accessToken);
     await new Promise<void>((resolve) => socket.on('open', () => resolve()));
     await new Promise((r) => setTimeout(r, 300));
 
@@ -148,8 +162,8 @@ describe('GET /ws', () => {
     // Deliberately do NOT assign `app` to this viewer.
     const { accessToken: viewerToken } = await login(ctx.app, 'ws-viewer@example.com', 'password123');
 
-    const adminSocket = new WebSocket(`${baseUrl}/ws?token=${adminToken}`);
-    const viewerSocket = new WebSocket(`${baseUrl}/ws?token=${viewerToken}`);
+    const adminSocket = connect(adminToken);
+    const viewerSocket = connect(viewerToken);
     await Promise.all([
       new Promise<void>((resolve, reject) => {
         adminSocket.on('open', resolve);

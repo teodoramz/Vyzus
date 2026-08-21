@@ -1,4 +1,4 @@
-// WS client for docs/04-api-spec.md `/ws`: auth via `?token=`, server->client
+// WS client for docs/04-api-spec.md `/ws`: auth via Sec-WebSocket-Protocol, server->client
 // events only (run.finished / incident.opened / incident.resolved /
 // stats.updated). Falls back to a 30s polling tick (consumers re-run their
 // TanStack Query fetches on it) whenever the socket isn't OPEN, per FR-4.1 /
@@ -8,6 +8,13 @@ import { wsEventSchema, type WsEvent } from '@vyzus/shared';
 import { getAccessToken, onAccessTokenChange } from '../auth/tokenStore';
 
 export type ConnectionState = 'connecting' | 'open' | 'polling';
+
+// The access token travels as a subprotocol rather than in the URL: query
+// strings are logged by nginx and any proxy in front of it, headers are not.
+// `vyzus.v1` is offered alongside it and is what the server echoes back, so the
+// token stays out of the response headers as well.
+const WS_PROTOCOL = 'vyzus.v1';
+const AUTH_PROTOCOL_PREFIX = 'vyzus.auth.';
 
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 15_000;
@@ -47,8 +54,8 @@ export function useVyzusSocket(onEvent: (event: WsEvent) => void): { state: Conn
       }
       setState('connecting');
       const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const url = `${proto}//${window.location.host}/ws?token=${encodeURIComponent(token)}`;
-      const ws = new WebSocket(url);
+      const url = `${proto}//${window.location.host}/ws`;
+      const ws = new WebSocket(url, [WS_PROTOCOL, `${AUTH_PROTOCOL_PREFIX}${token}`]);
       socket = ws;
 
       ws.onopen = () => {

@@ -143,7 +143,16 @@ run history need no special case for this type. An unknown token returns `404` w
 revealing whether it ever existed.
 
 ## WebSocket — `/ws`
-Auth: `?token=<accessToken>` on upgrade. Server → client events (JSON, fed by Redis pub/sub):
+Auth on upgrade: the access token travels in `Sec-WebSocket-Protocol`, not the query
+string, which nginx and any proxy in front of it would log. Offer two protocols and the
+server negotiates the first, keeping the token out of the response headers too:
+
+```js
+new WebSocket('wss://host/ws', ['vyzus.v1', `vyzus.auth.${accessToken}`]);
+```
+
+The socket closes with `4401` on a missing or invalid token, and again when the token
+expires — reconnect with a fresh one. Server → client events (JSON, fed by Redis pub/sub):
 
 ```ts
 { type: 'run.finished',      appId, checkId, runId, status, durationMs, hasScreenshot }
@@ -154,8 +163,8 @@ Auth: `?token=<accessToken>` on upgrade. Server → client events (JSON, fed by 
 
 **Viewer-scoped fan-out**: `run.finished`/`incident.*` are only sent to a `viewer`
 socket if the event's `appId` is one they're assigned to (checked once at connect
-time from `user_app_access` — an assignment change takes effect on reconnect, same
-as any other JWT-claims-derived permission here). `stats.updated` carries
+time from `user_app_access` — an assignment change takes effect on reconnect, which
+the token expiry above bounds to one access-token lifetime). `stats.updated` carries
 platform-wide aggregates with no per-viewer equivalent, so it's simply never sent
 to viewer sockets — the dashboard's `GET /stats` (already viewer-scoped) is what
 drives their header regardless.

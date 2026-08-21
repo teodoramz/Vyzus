@@ -158,7 +158,7 @@ describe('WS stats.updated', () => {
     await makeApp('b', 'failed');
 
     const { port } = ctx.app.server.address() as AddressInfo;
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws?token=${token}`);
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`, ['vyzus.v1', `vyzus.auth.${token}`]);
     await new Promise<void>((resolve, reject) => {
       socket.on('open', () => resolve());
       socket.on('error', reject);

@@ -1,6 +1,7 @@
 // WebSocket push (04-api-spec §WebSocket): dashboard clients connect to
-// GET /ws?token=<accessToken>; the API subscribes to the worker's Redis
-// pub/sub channels and fans every event out to all authenticated sockets.
+// GET /ws and authenticate with the access token in the Sec-WebSocket-Protocol
+// header; the API subscribes to the worker's Redis pub/sub channels and fans
+// every event out to all authenticated sockets.
 // The worker publishes messages already shaped as WS events, so forwarding is
 // a straight pass-through (validated against the shared schema first).
 //
@@ -26,6 +27,40 @@ import { computeAppCounts, countOpenIncidents } from '../lib/stats.js';
 const CHANNELS = [RUN_FINISHED_CHANNEL, INCIDENT_OPENED_CHANNEL, INCIDENT_RESOLVED_CHANNEL];
 const STATS_THROTTLE_MS = 1_000;
 
+/**
+ * The access token rides in Sec-WebSocket-Protocol rather than the query
+ * string. A URL is logged: it lands in nginx's access log, in any intervening
+ * proxy's, and in whatever aggregates them, so a query-string token turns every
+ * log reader into a session holder for the token's lifetime. Headers are not
+ * logged by default anywhere in this stack.
+ *
+ * A browser cannot set headers on a WebSocket, so the subprotocol list is the
+ * only client-controlled header available — this is the standard workaround.
+ */
+const AUTH_PROTOCOL_PREFIX = 'vyzus.auth.';
+
+/**
+ * Offered alongside the auth entry and echoed back as the negotiated protocol.
+ * The handshake response must name one of the offered protocols or the browser
+ * fails the connection, and naming this one keeps the token out of the response
+ * headers too.
+ */
+const WS_PROTOCOL = 'vyzus.v1';
+
+/** The access token from a Sec-WebSocket-Protocol list, or null. */
+function tokenFromProtocols(header: string | string[] | undefined): string | null {
+  if (header === undefined) return null;
+  const entries = (Array.isArray(header) ? header.join(',') : header).split(',');
+  for (const entry of entries) {
+    const value = entry.trim();
+    if (value.startsWith(AUTH_PROTOCOL_PREFIX)) {
+      const token = value.slice(AUTH_PROTOCOL_PREFIX.length);
+      return token.length > 0 ? token : null;
+    }
+  }
+  return null;
+}
+
 interface WsClient {
   role: UserRole;
   /** Accessible app ids for a viewer; null = unrestricted (admin/editor). Cached
@@ -42,7 +77,12 @@ function eventAppId(event: WsEvent): string | null {
 }
 
 export async function registerWs(app: FastifyInstance): Promise<void> {
-  await app.register(websocket);
+  await app.register(websocket, {
+    options: {
+      // Select the plain protocol, never the one carrying the token.
+      handleProtocols: (protocols: Set<string>) => (protocols.has(WS_PROTOCOL) ? WS_PROTOCOL : false),
+    },
+  });
 
   const clients = new Map<WebSocket, WsClient>();
 
@@ -116,8 +156,8 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
   };
 
   app.get('/ws', { websocket: true }, (socket, req) => {
-    const token = (req.query as Record<string, unknown>)['token'];
-    if (typeof token !== 'string' || token.length === 0) {
+    const token = tokenFromProtocols(req.headers['sec-websocket-protocol']);
+    if (token === null) {
       socket.close(4401, 'missing token');
       return;
     }
