@@ -13,6 +13,11 @@ export interface AccessTokenClaims {
   email: string;
 }
 
+/** What `verifyAccessToken` returns: the claims plus when the token dies. */
+export interface VerifiedAccessClaims extends AccessTokenClaims {
+  expiresAt: Date;
+}
+
 export interface RefreshTokenClaims {
   sub: string;
   jti: string;
@@ -38,7 +43,7 @@ export class TokenService {
       .sign(this.secret);
   }
 
-  async verifyAccessToken(token: string): Promise<AccessTokenClaims> {
+  async verifyAccessToken(token: string): Promise<VerifiedAccessClaims> {
     const { payload } = await jwtVerify(token, this.secret);
     return payloadToAccessClaims(payload);
   }
@@ -75,11 +80,14 @@ function isUserRole(value: unknown): value is UserRole {
   return typeof value === 'string' && (USER_ROLES as readonly string[]).includes(value);
 }
 
-function payloadToAccessClaims(payload: JWTPayload): AccessTokenClaims {
+function payloadToAccessClaims(payload: JWTPayload): VerifiedAccessClaims {
   const role = payload.role;
   const email = payload.email;
-  if (!payload.sub || !isUserRole(role) || typeof email !== 'string') {
+  // `exp` is required, not optional: every token this service signs has one,
+  // and a caller that acts on the expiry (see plugins/ws.ts) must not silently
+  // treat a missing one as "never expires".
+  if (!payload.sub || !isUserRole(role) || typeof email !== 'string' || typeof payload.exp !== 'number') {
     throw new Error('Invalid access token claims');
   }
-  return { sub: payload.sub, role, email };
+  return { sub: payload.sub, role, email, expiresAt: new Date(payload.exp * 1000) };
 }

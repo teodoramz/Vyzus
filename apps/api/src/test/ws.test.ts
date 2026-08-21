@@ -1,6 +1,7 @@
 // WS plugin: token-gated upgrade + Redis pub/sub → client fan-out.
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
+import { SignJWT } from 'jose';
 import type { AddressInfo } from 'node:net';
 import { RUN_FINISHED_CHANNEL } from '@vyzus/shared';
 import {
@@ -11,6 +12,7 @@ import {
   authHeader,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  makeTestConfig,
   type TestContext,
 } from './helpers.js';
 
@@ -48,6 +50,32 @@ describe('GET /ws', () => {
     const badToken = new WebSocket(`${baseUrl}/ws?token=garbage`);
     const code2 = await new Promise<number>((resolve) => badToken.on('close', resolve));
     expect(code2).toBe(4401);
+  });
+
+  // A socket authorized once and never again outlives every permission it was
+  // granted under — a demoted or unassigned user would keep receiving live
+  // events for as long as the connection stayed up.
+  it('closes an authenticated socket when its access token expires', async () => {
+    const { body } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const adminId = (body as { user: { id: string } }).user.id;
+    const shortLived = await new SignJWT({ role: 'admin', email: ADMIN_EMAIL })
+      .setProtectedHeader({ alg: 'HS256' })
+      .setSubject(adminId)
+      .setIssuedAt()
+      .setExpirationTime(Math.floor(Date.now() / 1000) + 1)
+      .sign(new TextEncoder().encode(makeTestConfig().JWT_SECRET));
+
+    const socket = new WebSocket(`${baseUrl}/ws?token=${shortLived}`);
+    await new Promise<void>((resolve) => socket.on('open', resolve));
+
+    const code = await new Promise<number>((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('socket outlived its token')), 5000);
+      socket.on('close', (c) => {
+        clearTimeout(t);
+        resolve(c);
+      });
+    });
+    expect(code).toBe(4401);
   });
 
   it('forwards run.finished pub/sub events to authenticated clients', async () => {

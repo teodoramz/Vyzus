@@ -32,6 +32,8 @@ interface WsClient {
    * at connect time — an assignment change takes effect on the next reconnect,
    * same as any other JWT-claims-derived permission in this app. */
   allowedAppIds: Set<string> | null;
+  /** Fires at the access token's own expiry; see the close scheduling below. */
+  expiryTimer: NodeJS.Timeout;
 }
 
 /** run.finished/incident.* carry a single appId; stats.updated is global. */
@@ -106,12 +108,23 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
     scheduleStats();
   });
 
+  /** Forget a socket and cancel its pending expiry close. */
+  const drop = (socket: WebSocket): void => {
+    const client = clients.get(socket);
+    if (client) clearTimeout(client.expiryTimer);
+    clients.delete(socket);
+  };
+
   app.get('/ws', { websocket: true }, (socket, req) => {
     const token = (req.query as Record<string, unknown>)['token'];
     if (typeof token !== 'string' || token.length === 0) {
       socket.close(4401, 'missing token');
       return;
     }
+    // Registered before the async work below: a socket that closes while the
+    // access lookup is still running would otherwise never be cleaned up.
+    socket.on('close', () => drop(socket));
+
     void app.tokens
       .verifyAccessToken(token)
       .then(async (claims) => {
@@ -123,8 +136,26 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
             .where(eq(userAppAccess.userId, claims.sub));
           allowedAppIds = new Set(rows.map((r) => r.appId));
         }
-        clients.set(socket, { role: claims.role, allowedAppIds });
-        socket.on('close', () => clients.delete(socket));
+        if (socket.readyState !== socket.OPEN) return;
+
+        // A socket authorized once and never again outlives every permission
+        // it was granted under: a demoted, unassigned or deleted user keeps
+        // receiving live events for as long as the connection stays up, and a
+        // busy platform keeps it up indefinitely. Closing at the access
+        // token's own expiry bounds that at one token lifetime — the client
+        // reconnects with a current token and is re-authorized from scratch.
+        const ttl = claims.expiresAt.getTime() - Date.now();
+        const expiryTimer = setTimeout(
+          () => {
+            drop(socket);
+            socket.close(4401, 'token expired');
+          },
+          Math.max(0, ttl),
+        );
+        // Never hold the event loop open on a client's behalf at shutdown.
+        expiryTimer.unref();
+
+        clients.set(socket, { role: claims.role, allowedAppIds, expiryTimer });
       })
       .catch(() => {
         socket.close(4401, 'invalid token');
@@ -133,7 +164,10 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
 
   app.addHook('onClose', async () => {
     if (statsTimer) clearTimeout(statsTimer);
-    for (const socket of clients.keys()) socket.close(1001, 'server shutting down');
+    for (const [socket, client] of clients) {
+      clearTimeout(client.expiryTimer);
+      socket.close(1001, 'server shutting down');
+    }
     clients.clear();
     sub.disconnect();
   });
