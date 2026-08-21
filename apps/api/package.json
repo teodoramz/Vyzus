@@ -26,7 +26,7 @@
     "nodemailer": "^9.0.5",
     "pino": "^9.14.0",
     "postgres": "^3.4.9",
-    "zod": "^3.25.76"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^26.1.2",
