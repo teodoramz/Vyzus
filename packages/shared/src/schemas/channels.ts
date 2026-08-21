@@ -1,12 +1,15 @@
 import { z } from 'zod';
 import { CHANNEL_TYPES, ALERT_EVENTS, DELIVERY_STATUSES } from '../constants.js';
 import { isoTimestamp, uuidSchema } from './common.js';
+import { isAllowedWebhookUrl, BLOCKED_WEBHOOK_HOST_MESSAGE } from '../webhook-host.js';
 
 export const channelTypeSchema = z.enum(CHANNEL_TYPES);
 
 /** slack / discord / webhook — everything delivered by an HTTP POST. */
 export const webhookChannelConfigSchema = z.object({
-  url: z.string().url().max(2000),
+  // Checked here rather than at delivery so the rejection is a 400 on the
+  // request that introduced it, not a silent failure hours later.
+  url: z.string().url().max(2000).refine(isAllowedWebhookUrl, { message: BLOCKED_WEBHOOK_HOST_MESSAGE }),
   /** HMAC-SHA256 signing secret; generic `webhook` channels only. */
   secret: z.string().min(1).max(500).optional(),
 });

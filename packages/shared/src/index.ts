@@ -10,4 +10,5 @@ export * from './cert-expiry.js';
 export * from './dependencies.js';
 export * from './default-checks.js';
 export * from './channel-secrets.js';
+export * from './webhook-host.js';
 export * from './schemas/index.js';

@@ -379,14 +379,14 @@ describe('alerter queue consumer', () => {
 describe('POST /channels/:id/test', () => {
   it('sends a rendered sample alert and reports the response code', async () => {
     const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
-    const create = await ctx.app.inject({
-      method: 'POST',
-      url: '/api/v1/channels',
-      headers: authHeader(accessToken),
-      payload: { name: 'test-hook', type: 'discord', config: { url: `${listener.url}/test-route` } },
-    });
-    expect(create.statusCode).toBe(201);
-    const channelId = create.json().id;
+    // Inserted rather than POSTed: the listener is on loopback, which the
+    // channel schema rejects (packages/shared/src/webhook-host.ts). Creation is
+    // covered by its own tests; what matters here is the delivery path.
+    const [channel] = await ctx.dbHandle.db
+      .insert(alertChannels)
+      .values({ name: 'test-hook', type: 'discord', config: { url: `${listener.url}/test-route` }, allApps: true })
+      .returning();
+    const channelId = channel!.id;
 
     const res = await ctx.app.inject({
       method: 'POST',
@@ -422,7 +422,7 @@ describe('channel credential storage', () => {
     const { id, body } = await createChannel({
       name: 'signed',
       type: 'webhook',
-      config: { url: `${listener.url}/signed`, secret: 'tops3cret' },
+      config: { url: 'https://hooks.example.com/signed', secret: 'tops3cret' },
     });
 
     const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
@@ -436,15 +436,22 @@ describe('channel credential storage', () => {
 
   it('signs deliveries with the stored secret', async () => {
     const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
-    const { id } = await createChannel({
-      name: 'signed',
-      type: 'webhook',
-      config: { url: `${listener.url}/signed-delivery`, secret: 'tops3cret' },
-    });
+    // Same reason as above: loopback listener, so the row goes in directly —
+    // with the secret encrypted exactly as the create route would store it.
+    const [channel] = await ctx.dbHandle.db
+      .insert(alertChannels)
+      .values({
+        name: 'signed',
+        type: 'webhook',
+        config: { url: `${listener.url}/signed-delivery` },
+        secretsEnc: encryptJson({ secret: 'tops3cret' }, makeTestConfig().ENCRYPTION_KEY),
+        allApps: true,
+      })
+      .returning();
 
     await ctx.app.inject({
       method: 'POST',
-      url: `/api/v1/channels/${id}/test`,
+      url: `/api/v1/channels/${channel!.id}/test`,
       headers: authHeader(accessToken),
     });
 
@@ -458,7 +465,7 @@ describe('channel credential storage', () => {
     const { id } = await createChannel({
       name: 'signed',
       type: 'webhook',
-      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+      config: { url: 'https://hooks.example.com/a', secret: 'tops3cret' },
     });
 
     // The dashboard never receives the secret, so an unchanged edit sends the
@@ -467,7 +474,7 @@ describe('channel credential storage', () => {
       method: 'PATCH',
       url: `/api/v1/channels/${id}`,
       headers: authHeader(accessToken),
-      payload: { config: { url: `${listener.url}/b` } },
+      payload: { config: { url: 'https://hooks.example.com/b' } },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().hasSecret).toBe(true);
@@ -483,14 +490,14 @@ describe('channel credential storage', () => {
     const { id } = await createChannel({
       name: 'signed',
       type: 'webhook',
-      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+      config: { url: 'https://hooks.example.com/a', secret: 'tops3cret' },
     });
 
     await ctx.app.inject({
       method: 'PATCH',
       url: `/api/v1/channels/${id}`,
       headers: authHeader(accessToken),
-      payload: { config: { url: `${listener.url}/a`, secret: 'rotated' } },
+      payload: { config: { url: 'https://hooks.example.com/a', secret: 'rotated' } },
     });
 
     const [row] = await ctx.dbHandle.db.select().from(alertChannels).where(eq(alertChannels.id, id));
@@ -504,7 +511,7 @@ describe('channel credential storage', () => {
     const { id } = await createChannel({
       name: 'signed',
       type: 'webhook',
-      config: { url: `${listener.url}/a`, secret: 'tops3cret' },
+      config: { url: 'https://hooks.example.com/a', secret: 'tops3cret' },
     });
 
     const res = await ctx.app.inject({
@@ -542,5 +549,60 @@ describe('channel credential storage', () => {
     expect(row!.secretsEnc).not.toBeNull();
     expect(body.hasPassword).toBe(true);
     expect(JSON.stringify(body)).not.toContain('smtp-p4ssword');
+  });
+});
+
+// Any account holder may create a channel and fire it with POST /:id/test,
+// which reports whether the request connected and with what status — a probe.
+// Loopback and link-local are never a real notification target and are the two
+// worth denying it; private ranges stay allowed, since a self-hosted Vyzus
+// notifying a self-hosted service is the normal case.
+describe('webhook host restrictions', () => {
+  async function create(url: string) {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    return ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/channels',
+      headers: authHeader(accessToken),
+      payload: { name: 'probe', type: 'webhook', config: { url } },
+    });
+  }
+
+  it.each([
+    ['http://localhost:3000/hook', 'localhost by name'],
+    ['http://sub.localhost/hook', 'the .localhost suffix'],
+    ['http://127.0.0.1:3000/hook', 'loopback'],
+    ['http://127.9.9.9/hook', 'the rest of 127.0.0.0/8'],
+    ['http://[::1]:3000/hook', 'IPv6 loopback'],
+    ['http://[::ffff:127.0.0.1]/hook', 'IPv4-mapped loopback'],
+    ['http://169.254.169.254/latest/meta-data/', 'cloud instance metadata'],
+    ['http://0.0.0.0/hook', 'the unspecified address'],
+  ])('rejects %s (%s)', async (url) => {
+    const res = await create(url);
+    expect(res.statusCode).toBe(400);
+  });
+
+  it.each([
+    ['https://hooks.slack.com/services/T/B/x', 'a public endpoint'],
+    ['http://10.0.0.5:8080/hook', 'RFC1918 — deliberately allowed'],
+    ['http://192.168.1.20/hook', 'a home/office LAN'],
+    ['http://mattermost.internal/hooks/x', 'an internal hostname'],
+  ])('accepts %s (%s)', async (url) => {
+    const res = await create(url);
+    expect(res.statusCode).toBe(201);
+  });
+
+  it('rejects the same host on update, not just on create', async () => {
+    const { accessToken } = await login(ctx.app, ADMIN_EMAIL, ADMIN_PASSWORD);
+    const created = await create('https://hooks.example.com/ok');
+    expect(created.statusCode).toBe(201);
+
+    const res = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/channels/${created.json().id}`,
+      headers: authHeader(accessToken),
+      payload: { config: { url: 'http://169.254.169.254/latest/meta-data/' } },
+    });
+    expect(res.statusCode).toBe(400);
   });
 });
