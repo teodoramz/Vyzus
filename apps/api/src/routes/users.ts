@@ -43,9 +43,21 @@ export const userRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req) => {
       const { id } = req.params;
-      const update: Partial<{ role: 'admin' | 'editor' | 'viewer'; passwordHash: string }> = {};
+      const update: Partial<{
+        role: 'admin' | 'editor' | 'viewer';
+        passwordHash: string;
+        refreshTokenHash: string | null;
+      }> = {};
       if (req.body.role !== undefined) update.role = req.body.role;
-      if (req.body.password !== undefined) update.passwordHash = await hashPassword(req.body.password);
+      if (req.body.password !== undefined) {
+        update.passwordHash = await hashPassword(req.body.password);
+        // Changing a password is how a compromised account gets taken back, so
+        // it has to end the sessions that password protected. The refresh token
+        // is an independent credential: left in place it keeps minting access
+        // tokens for the rest of its 7-day life, and the reset accomplishes
+        // nothing against whoever already holds the cookie.
+        update.refreshTokenHash = null;
+      }
       const [row] = await app.db.update(users).set(update).where(eq(users.id, id)).returning();
       if (!row) throw notFound('User not found');
       return toUser(row);

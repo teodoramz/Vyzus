@@ -232,6 +232,66 @@ describe('refresh rotation', () => {
     const res = await ctx.app.inject({ method: 'POST', url: '/api/v1/auth/refresh' });
     expect(res.statusCode).toBe(401);
   });
+
+  // Resetting a password is how an admin takes a compromised account back. A
+  // refresh cookie is a credential of its own: if it survives the reset, the
+  // account is still compromised for the rest of the cookie's 7-day life.
+  it('invalidates an existing session when an admin changes the password', async () => {
+    const create = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/users',
+      headers: authHeader(adminToken),
+      payload: { email: 'compromised@example.com', password: 'original-password-1', role: 'editor' },
+    });
+    expect(create.statusCode).toBe(201);
+    const victim = await login(ctx.app, 'compromised@example.com', 'original-password-1');
+    expect(victim.refreshCookie).toBeTruthy();
+
+    const patch = await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/users/${create.json().id}`,
+      headers: authHeader(adminToken),
+      payload: { password: 'rotated-password-1' },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const stolen = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      cookies: { refreshToken: victim.refreshCookie },
+    });
+    expect(stolen.statusCode).toBe(401);
+
+    // ...and the new password still signs in normally.
+    const fresh = await login(ctx.app, 'compromised@example.com', 'rotated-password-1');
+    expect(fresh.accessToken).toBeTruthy();
+  });
+
+  // A role change is picked up on the next refresh, so it needs no revocation.
+  it('leaves the session alone when only the role changes', async () => {
+    const create = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/users',
+      headers: authHeader(adminToken),
+      payload: { email: 'demoted@example.com', password: 'demoted-password-1', role: 'editor' },
+    });
+    expect(create.statusCode).toBe(201);
+    const session = await login(ctx.app, 'demoted@example.com', 'demoted-password-1');
+
+    await ctx.app.inject({
+      method: 'PATCH',
+      url: `/api/v1/users/${create.json().id}`,
+      headers: authHeader(adminToken),
+      payload: { role: 'viewer' },
+    });
+
+    const refreshed = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      cookies: { refreshToken: session.refreshCookie },
+    });
+    expect(refreshed.statusCode).toBe(200);
+  });
 });
 
 describe('role guard', () => {
