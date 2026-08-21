@@ -45,8 +45,14 @@ function toIpv4Octets(host: string): [number, number, number, number] | null {
 
 /** Hosts that are never a legitimate webhook target. */
 export function isBlockedWebhookHost(hostname: string): boolean {
-  // URL keeps IPv6 literals in brackets.
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  // URL keeps IPv6 literals in brackets. The trailing dot of a fully qualified
+  // name is stripped too: `localhost.` resolves exactly like `localhost`, and
+  // WHATWG URL parsing preserves it (unlike the dot after an IPv4 literal,
+  // which it normalises away), so leaving it on is a way past this check.
+  const host = hostname
+    .replace(/^\[|\]$/g, '')
+    .replace(/\.+$/, '')
+    .toLowerCase();
 
   if (host === 'localhost' || host.endsWith('.localhost')) return true;
 

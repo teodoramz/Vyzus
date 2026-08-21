@@ -577,6 +577,18 @@ describe('webhook host restrictions', () => {
     ['http://[::ffff:127.0.0.1]/hook', 'IPv4-mapped loopback'],
     ['http://169.254.169.254/latest/meta-data/', 'cloud instance metadata'],
     ['http://0.0.0.0/hook', 'the unspecified address'],
+    // WHATWG URL parsing normalises every numeric encoding of an IPv4 address,
+    // so these all arrive as 127.0.0.1 — but only if the check runs on the
+    // parsed hostname rather than the string the user typed.
+    ['http://2130706433/hook', 'the decimal form of 127.0.0.1'],
+    ['http://0177.0.0.1/hook', 'the octal form'],
+    ['http://0x7f.0.0.1/hook', 'the hex form'],
+    ['http://127.1/hook', 'the short form'],
+    ['http://[::ffff:a9fe:a9fe]/hook', 'metadata as IPv4-mapped IPv6'],
+    // A trailing dot is the DNS root and resolves identically. WHATWG strips it
+    // after an IPv4 literal but keeps it on a name, so it needs handling.
+    ['http://localhost./hook', 'localhost as a fully qualified name'],
+    ['http://sub.localhost./hook', 'the .localhost suffix, fully qualified'],
   ])('rejects %s (%s)', async (url) => {
     const res = await create(url);
     expect(res.statusCode).toBe(400);
