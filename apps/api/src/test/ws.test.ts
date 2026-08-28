@@ -100,8 +100,6 @@ describe('GET /ws', () => {
       socket.on('error', reject);
     });
     // Give the server a beat to finish token verification before publishing.
-    await new Promise((r) => setTimeout(r, 300));
-
     const event = {
       type: 'run.finished',
       appId: '11111111-1111-4111-8111-111111111111',
@@ -174,8 +172,6 @@ describe('GET /ws', () => {
         viewerSocket.on('error', reject);
       }),
     ]);
-    await new Promise((r) => setTimeout(r, 300));
-
     const event = {
       type: 'run.finished',
       appId: app.id,
@@ -186,16 +182,26 @@ describe('GET /ws', () => {
       hasScreenshot: false,
     };
 
+    // `open` fires on the handshake, but the server registers the client only
+    // after verifying the token and loading app access — so republish until the
+    // admin receives one rather than sleeping a guessed interval. The viewer
+    // must receive none of them, however many are sent.
+    let viewerReceived = 0;
+    viewerSocket.on('message', () => (viewerReceived += 1));
+
     const adminWaiter = nextMessage(adminSocket);
-    const viewerGotSomething = new Promise<'message'>((resolve) =>
-      viewerSocket.once('message', () => resolve('message')),
-    );
-    const viewerTimedOut = new Promise<'timeout'>((resolve) => setTimeout(() => resolve('timeout'), 1000));
+    const publisher = setInterval(() => {
+      void ctx.redis.publish(RUN_FINISHED_CHANNEL, JSON.stringify(event));
+    }, 50);
+    try {
+      expect(await adminWaiter).toEqual(event); // admin (unrestricted) receives it
+    } finally {
+      clearInterval(publisher);
+    }
 
-    await ctx.redis.publish(RUN_FINISHED_CHANNEL, JSON.stringify(event));
-
-    expect(await adminWaiter).toEqual(event); // admin (unrestricted) still receives it
-    expect(await Promise.race([viewerGotSomething, viewerTimedOut])).toBe('timeout'); // viewer does not
+    // Admin delivery proves the fan-out ran; give any stray frame time to land.
+    await new Promise((r) => setTimeout(r, 300));
+    expect(viewerReceived).toBe(0);
 
     adminSocket.close();
     viewerSocket.close();
