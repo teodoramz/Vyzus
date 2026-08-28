@@ -18,6 +18,7 @@ import { toChannel } from '../lib/mappers.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { deliverToChannel, sampleAlertPayload } from '../services/alerter.js';
 import { accessibleAppIds, assertChannelOwnership } from '../lib/access.js';
+import type { AuthUser } from '../plugins/auth.js';
 
 // Global channels stay admin-only; editors manage apps and checks, never alert
 // routing. A viewer may create and manage channels they own — self-service
@@ -49,6 +50,17 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
       emailFor(row.createdBy),
     ]);
     return toChannel(row, appIds, createdByEmail);
+  }
+
+  /**
+   * Load a channel the caller is allowed to manage, or throw. Every :id route
+   * goes through this, so the ownership check cannot be forgotten on a new one.
+   */
+  async function loadOwned(id: string, user: AuthUser): Promise<AlertChannelRow> {
+    const [row] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, id)).limit(1);
+    if (!row) throw notFound('Channel not found');
+    assertChannelOwnership(user, row);
+    return row;
   }
 
   /** Viewer create/update guardrail: no all-apps, every appId must be theirs. */
@@ -118,9 +130,7 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const user = req.authUser!;
       const { id } = req.params;
-      const [existing] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, id)).limit(1);
-      if (!existing) throw notFound('Channel not found');
-      assertChannelOwnership(user, existing);
+      const existing = await loadOwned(id, user);
 
       const b = req.body;
       if (user.role === 'viewer') {
@@ -166,9 +176,7 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
   );
 
   app.delete('/:id', { preHandler: authed, schema: { params: idParamSchema } }, async (req, reply) => {
-    const [existing] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, req.params.id)).limit(1);
-    if (!existing) throw notFound('Channel not found');
-    assertChannelOwnership(req.authUser!, existing);
+    await loadOwned(req.params.id, req.authUser!);
     await app.db.delete(alertChannels).where(eq(alertChannels.id, req.params.id));
     return reply.status(204).send();
   });
@@ -179,9 +187,7 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id/test',
     { preHandler: authed, schema: { params: idParamSchema, response: { 200: testChannelResponseSchema } } },
     async (req) => {
-      const [row] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, req.params.id)).limit(1);
-      if (!row) throw notFound('Channel not found');
-      assertChannelOwnership(req.authUser!, row);
+      const row = await loadOwned(req.params.id, req.authUser!);
       const secrets = row.secretsEnc ? decryptJson<ChannelSecrets>(row.secretsEnc, app.encryptionKey) : null;
       const outcome = await deliverToChannel(
         row,
@@ -199,9 +205,7 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
     '/:id/deliveries',
     { preHandler: authed, schema: { params: idParamSchema, response: { 200: alertDeliveryListSchema } } },
     async (req) => {
-      const [row] = await app.db.select().from(alertChannels).where(eq(alertChannels.id, req.params.id)).limit(1);
-      if (!row) throw notFound('Channel not found');
-      assertChannelOwnership(req.authUser!, row);
+      await loadOwned(req.params.id, req.authUser!);
       const rows = await app.db
         .select()
         .from(alertDeliveries)
