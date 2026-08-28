@@ -282,8 +282,8 @@ export function CheckEditor(): JSX.Element {
         {type === 'uptime' && (
           <div>
             <span className={labelClass}>Uptime checks — what is it probing?</span>
-            <div className="flex gap-4">
-              {(['http', 'port'] as const).map((m) => (
+            <div className="flex flex-wrap gap-4">
+              {(['http', 'port', 'ping', 'dns'] as const).map((m) => (
                 <label key={m} className="flex items-center gap-1.5 text-sm">
                   <input
                     type="radio"
