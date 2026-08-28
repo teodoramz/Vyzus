@@ -11,6 +11,8 @@ certificates, runs recorded
 **Playwright** user journeys, and gives you a dashboard with live status,
 response-time metrics, screenshots, incident history and alerting.
 
+![Vyzus overview — every enrolled application with its status, availability and recent response times](docs/images/dashboard.png)
+
 ## What it does
 
 - **Enroll web applications** — name, landing URL, tags, optional encrypted credentials.
@@ -69,6 +71,37 @@ response-time metrics, screenshots, incident history and alerting.
 - **Realistic browser fingerprint** — real User-Agent, viewport, locale and timezone
   with Chromium's automation flags suppressed, so monitored sites serve the real page
   rather than a bot challenge.
+
+## A closer look
+
+**Checks.** An uptime check probes one of four ways: an HTTP(S) request in a real
+browser, a raw TCP/UDP port, an ICMP ping, or a DNS record. Each mode brings its own
+assertions — expected status and page content for HTTP, a TLS handshake for a port,
+packet loss for a ping, expected values for a record.
+
+![Creating a check — the four uptime modes, with the DNS options shown](docs/images/check-modes.png)
+
+**User journeys.** A journey is an ordinary Playwright script, recorded with
+`playwright codegen` or written by hand, edited in the browser and run on a schedule
+in a sandboxed container. A failing journey degrades the application; it never marks
+the landing page down.
+
+![Editing a journey check — a Playwright script in the built-in editor](docs/images/journey-editor.png)
+
+**Per-application detail.** Availability over three windows, response time across every
+run, and the screenshot history behind it.
+
+![Application detail — availability windows and the response-time chart](docs/images/app-detail.png)
+
+**Alerting.** Email over SMTP, Slack and Discord webhooks, or a generic JSON webhook
+signed with HMAC-SHA256. Credentials are encrypted at rest and never returned by the API.
+
+![Creating an alert channel](docs/images/alert-channel.png)
+
+**Public status page.** An unauthenticated view of the applications you explicitly
+publish — names, status and uptime only, never URLs or error text.
+
+![The public status page](docs/images/status-page.png)
 
 ## Stack
 
