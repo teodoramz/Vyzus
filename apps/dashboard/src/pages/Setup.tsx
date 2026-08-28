@@ -7,6 +7,8 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/http';
 import { VyzusMark } from '../components/VyzusMark';
 import { AmbientBackground } from '../components/AmbientBackground';
+import { inputClass, labelClass } from '../components/formFields';
+import { ErrorBanner } from '../components/ErrorBanner';
 
 const MIN_PASSWORD_LENGTH = 8;
 
@@ -57,7 +59,7 @@ export function Setup(): JSX.Element {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="setup-email" className="mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400">
+            <label htmlFor="setup-email" className={labelClass}>
               Email
             </label>
             <input
@@ -67,15 +69,12 @@ export function Setup(): JSX.Element {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100"
+              className={inputClass}
             />
           </div>
 
           <div>
-            <label
-              htmlFor="setup-password"
-              className="mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400"
-            >
+            <label htmlFor="setup-password" className={labelClass}>
               Password
             </label>
             <input
@@ -86,13 +85,13 @@ export function Setup(): JSX.Element {
               autoComplete="new-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100"
+              className={inputClass}
             />
             <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">At least {MIN_PASSWORD_LENGTH} characters.</p>
           </div>
 
           <div>
-            <label htmlFor="setup-confirm" className="mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400">
+            <label htmlFor="setup-confirm" className={labelClass}>
               Confirm password
             </label>
             <input
@@ -102,7 +101,7 @@ export function Setup(): JSX.Element {
               autoComplete="new-password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100"
+              className={inputClass}
             />
             {mismatch && <p className="mt-1 text-xs text-red-600 dark:text-rose-400">Passwords do not match.</p>}
             {tooShort && !mismatch && (
@@ -112,11 +111,7 @@ export function Setup(): JSX.Element {
             )}
           </div>
 
-          {error && (
-            <p role="alert" className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-400">
-              {error}
-            </p>
-          )}
+          <ErrorBanner message={error} />
 
           <button
             type="submit"

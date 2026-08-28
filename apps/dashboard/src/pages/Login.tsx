@@ -6,6 +6,8 @@ import { useAuth } from '../auth/AuthContext';
 import { ApiError } from '../api/http';
 import { VyzusMark } from '../components/VyzusMark';
 import { AmbientBackground } from '../components/AmbientBackground';
+import { inputClass, labelClass } from '../components/formFields';
+import { ErrorBanner } from '../components/ErrorBanner';
 
 export function Login(): JSX.Element {
   const { login, status } = useAuth();
@@ -60,7 +62,7 @@ export function Login(): JSX.Element {
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="email" className="mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400">
+            <label htmlFor="email" className={labelClass}>
               Email
             </label>
             <input
@@ -70,11 +72,11 @@ export function Login(): JSX.Element {
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100"
+              className={inputClass}
             />
           </div>
           <div>
-            <label htmlFor="password" className="mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400">
+            <label htmlFor="password" className={labelClass}>
               Password
             </label>
             <input
@@ -84,14 +86,10 @@ export function Login(): JSX.Element {
               autoComplete="current-password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100"
+              className={inputClass}
             />
           </div>
-          {error && (
-            <p role="alert" className="rounded-lg bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-400">
-              {error}
-            </p>
-          )}
+          <ErrorBanner message={error} />
           <button
             type="submit"
             disabled={submitting}

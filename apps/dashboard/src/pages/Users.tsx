@@ -8,12 +8,13 @@ import { ApiError } from '../api/http';
 import { useAuth } from '../auth/AuthContext';
 import { Modal } from '../components/Modal';
 import { formatDateTime } from '../lib/format';
+import { ErrorBanner } from '../components/ErrorBanner';
 import {
+  dangerButtonClass,
   inputClass,
   labelClass,
   primaryButtonClass,
   secondaryButtonClass,
-  dangerButtonClass,
 } from '../components/formFields';
 
 const ROLE_BADGE: Record<UserRole, string> = {
@@ -114,11 +115,7 @@ function AssignAppsModal({ user, onClose }: { user: User; onClose: () => void })
             ))}
           </div>
         )}
-        {error && (
-          <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-            {error}
-          </p>
-        )}
+        <ErrorBanner message={error} />
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className={secondaryButtonClass}>
             Cancel
@@ -202,11 +199,7 @@ function NewUserModal({ onClose }: { onClose: () => void }): JSX.Element {
           </select>
           <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">{ROLE_DESCRIPTION[role]}</p>
         </div>
-        {error && (
-          <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-            {error}
-          </p>
-        )}
+        <ErrorBanner message={error} />
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className={secondaryButtonClass}>
             Cancel
@@ -338,11 +331,7 @@ function EditUserModal({ user, onClose }: { user: User; onClose: () => void }): 
           )}
         </div>
 
-        {error && (
-          <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-            {error}
-          </p>
-        )}
+        <ErrorBanner message={error} />
 
         <div className="flex items-center justify-between border-t border-gray-200 pt-4 dark:border-white/10">
           {confirmingDelete ? (

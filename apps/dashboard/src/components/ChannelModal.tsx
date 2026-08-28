@@ -8,6 +8,7 @@ import { ApiError } from '../api/http';
 import { Modal } from './Modal';
 import { useAuth } from '../auth/AuthContext';
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from './formFields';
+import { ErrorBanner } from './ErrorBanner';
 
 export function ChannelModal({ channel, onClose }: { channel: Channel | null; onClose: () => void }): JSX.Element {
   const qc = useQueryClient();
@@ -266,11 +267,7 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
           )}
         </div>
 
-        {error && (
-          <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-            {error}
-          </p>
-        )}
+        <ErrorBanner message={error} />
 
         <div className="flex justify-end gap-2 pt-2">
           <button type="button" onClick={onClose} className={secondaryButtonClass}>

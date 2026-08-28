@@ -9,6 +9,7 @@ import { ApiError } from '../api/http';
 import { useAuth } from '../auth/AuthContext';
 import { MaintenanceWindows } from '../components/MaintenanceWindows';
 import { inputClass, labelClass, primaryButtonClass } from '../components/formFields';
+import { ErrorBanner } from '../components/ErrorBanner';
 
 export function Settings(): JSX.Element {
   const { user } = useAuth();
@@ -157,11 +158,7 @@ export function Settings(): JSX.Element {
             </p>
           </div>
 
-          {error && (
-            <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-              {error}
-            </p>
-          )}
+          <ErrorBanner message={error} />
           {readOnly && (
             <p className="text-xs text-slate-400 dark:text-zinc-500">Only admins can change retention settings.</p>
           )}

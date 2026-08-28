@@ -1,5 +1,5 @@
 export const inputClass =
-  'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 dark:focus:border-cyan-400 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100';
+  'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 dark:border-white/10 dark:bg-zinc-900 dark:text-zinc-100 dark:focus:border-cyan-400 dark:focus:ring-cyan-400';
 export const labelClass = 'mb-1 block text-sm font-medium text-slate-600 dark:text-zinc-400';
 export const primaryButtonClass =
   'rounded-lg bg-gradient-to-br from-emerald-400 to-cyan-500 px-3 py-2 text-sm font-semibold text-zinc-950 hover:opacity-90 disabled:opacity-50';

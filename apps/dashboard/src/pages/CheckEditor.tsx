@@ -26,6 +26,7 @@ import { PingConfigFields, DnsConfigFields } from '../components/PingDnsConfigFi
 import { JourneyConfigFields, DEFAULT_JOURNEY_SPEC } from '../components/JourneyConfigFields';
 import { DryRunResult } from '../components/DryRunResult';
 import { ConfirmButton } from '../components/ConfirmButton';
+import { ErrorBanner } from '../components/ErrorBanner';
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from '../components/formFields';
 
 const TYPE_LABEL: Record<CheckType, string> = { uptime: 'Uptime', journey: 'Journey', push: 'Heartbeat (push)' };
@@ -417,11 +418,7 @@ export function CheckEditor(): JSX.Element {
         {type === 'journey' && <JourneyConfigFields config={journeyConfig} onChange={setJourneyConfig} />}
       </div>
 
-      {error && (
-        <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-          {error}
-        </p>
-      )}
+      <ErrorBanner message={error} />
 
       {dryRunResult && <DryRunResult result={dryRunResult} />}
 

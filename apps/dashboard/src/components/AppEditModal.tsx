@@ -8,6 +8,7 @@ import { ApiError } from '../api/http';
 import { Modal } from './Modal';
 import { ConfirmButton } from './ConfirmButton';
 import { inputClass, labelClass, primaryButtonClass, secondaryButtonClass } from './formFields';
+import { ErrorBanner } from './ErrorBanner';
 
 export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => void }): JSX.Element {
   const qc = useQueryClient();
@@ -262,11 +263,7 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
           )}
         </div>
 
-        {error && (
-          <p className="rounded bg-red-600/10 dark:bg-rose-500/10 px-3 py-2 text-sm text-red-600 dark:text-rose-500">
-            {error}
-          </p>
-        )}
+        <ErrorBanner message={error} />
 
         <div className="flex items-center justify-between pt-2">
           <ConfirmButton
