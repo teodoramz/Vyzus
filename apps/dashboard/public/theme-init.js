@@ -1,11 +1,9 @@
-// Applied synchronously (before first paint) so every page — including /login,
-// which never mounts the Header that owns the toggle — shows the theme the user
-// last explicitly chose. Default is light: we do NOT fall back to
-// prefers-color-scheme here, matching useDarkMode's initial() logic exactly.
+// Runs before first paint so every page — including /login, which never mounts
+// the Header that owns the toggle — shows the last chosen theme. Defaults to
+// light rather than prefers-color-scheme, matching useDarkMode's initial().
 //
-// A separate file rather than an inline <script> so the dashboard can ship a
-// `script-src 'self'` CSP (infra/nginx-security-headers.conf). Loaded without
-// defer/async, so it still runs before the first paint.
+// A file rather than an inline <script> so the dashboard can ship a
+// `script-src 'self'` CSP. Loaded without defer/async to keep it pre-paint.
 (function () {
   try {
     if (localStorage.getItem('vyzus.theme') === 'dark') {

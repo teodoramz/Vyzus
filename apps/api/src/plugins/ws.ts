@@ -28,22 +28,16 @@ const CHANNELS = [RUN_FINISHED_CHANNEL, INCIDENT_OPENED_CHANNEL, INCIDENT_RESOLV
 const STATS_THROTTLE_MS = 1_000;
 
 /**
- * The access token rides in Sec-WebSocket-Protocol rather than the query
- * string. A URL is logged: it lands in nginx's access log, in any intervening
- * proxy's, and in whatever aggregates them, so a query-string token turns every
- * log reader into a session holder for the token's lifetime. Headers are not
- * logged by default anywhere in this stack.
- *
- * A browser cannot set headers on a WebSocket, so the subprotocol list is the
- * only client-controlled header available — this is the standard workaround.
+ * The access token rides here rather than in the query string, which nginx and
+ * every proxy in front of it log. A browser cannot set headers on a WebSocket,
+ * so the subprotocol list is the only client-controlled header available.
  */
 const AUTH_PROTOCOL_PREFIX = 'vyzus.auth.';
 
 /**
  * Offered alongside the auth entry and echoed back as the negotiated protocol.
- * The handshake response must name one of the offered protocols or the browser
- * fails the connection, and naming this one keeps the token out of the response
- * headers too.
+ * The handshake must name one of the offered protocols or the browser fails the
+ * connection; naming this one keeps the token out of the response headers.
  */
 const WS_PROTOCOL = 'vyzus.v1';
 
@@ -79,7 +73,7 @@ function eventAppId(event: WsEvent): string | null {
 export async function registerWs(app: FastifyInstance): Promise<void> {
   await app.register(websocket, {
     options: {
-      // Select the plain protocol, never the one carrying the token.
+      // Never echo the entry carrying the token.
       handleProtocols: (protocols: Set<string>) => (protocols.has(WS_PROTOCOL) ? WS_PROTOCOL : false),
     },
   });
@@ -161,8 +155,8 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
       socket.close(4401, 'missing token');
       return;
     }
-    // Registered before the async work below: a socket that closes while the
-    // access lookup is still running would otherwise never be cleaned up.
+    // Before the async work below: a socket closing mid-lookup would otherwise
+    // never be cleaned up.
     socket.on('close', () => drop(socket));
 
     void app.tokens
@@ -178,12 +172,11 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
         }
         if (socket.readyState !== socket.OPEN) return;
 
-        // A socket authorized once and never again outlives every permission
-        // it was granted under: a demoted, unassigned or deleted user keeps
-        // receiving live events for as long as the connection stays up, and a
-        // busy platform keeps it up indefinitely. Closing at the access
-        // token's own expiry bounds that at one token lifetime — the client
-        // reconnects with a current token and is re-authorized from scratch.
+        // Authorization is checked once at connect, so without this a demoted
+        // or unassigned user keeps receiving events for the life of the
+        // connection — indefinitely on a busy platform. Closing at the token's
+        // expiry bounds that to one token lifetime; the client reconnects and
+        // is re-authorized from scratch.
         const ttl = claims.expiresAt.getTime() - Date.now();
         const expiryTimer = setTimeout(
           () => {
@@ -192,8 +185,7 @@ export async function registerWs(app: FastifyInstance): Promise<void> {
           },
           Math.max(0, ttl),
         );
-        // Never hold the event loop open on a client's behalf at shutdown.
-        expiryTimer.unref();
+        expiryTimer.unref(); // never hold the event loop open at shutdown
 
         clients.set(socket, { role: claims.role, allowedAppIds, expiryTimer });
       })

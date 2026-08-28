@@ -1,8 +1,7 @@
-// Redis fixed-window counter, used by the public endpoint limiters.
+// Redis fixed-window counter for the public endpoint limiters.
 //
 // Fixed rather than sliding: a sliding window needs a sorted set per client,
-// and this is a coarse abuse guard rather than a quota system. Imprecision at a
-// window boundary does not matter at these limits.
+// and this is a coarse abuse guard, not a quota system.
 import type { Redis } from 'ioredis';
 
 export interface WindowVerdict {
@@ -19,8 +18,8 @@ export async function hitFixedWindow(
 ): Promise<WindowVerdict> {
   const count = await redis.incr(key);
   if (count === 1) {
-    // The window starts at the first hit and is never extended, so a caller
-    // cannot keep their own lockout alive by continuing to knock.
+    // Never extended, so a caller cannot keep their own lockout alive by
+    // continuing to knock.
     await redis.expire(key, windowSeconds);
   }
   if (count <= limit) return { allowed: true, retryAfterSeconds: 0 };

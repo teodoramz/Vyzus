@@ -1,26 +1,14 @@
 // Which hosts an alert webhook may point at.
 //
-// Any account holder can create a channel and fire it with POST
-// /channels/:id/test, which reports back whether the request connected and with
-// what status. That makes the endpoint a probe, so the destination is worth a
-// look before it is stored.
-//
-// The line is drawn at addresses that are never a real notification target and
-// are valuable to reach: the API's own loopback interface (services that bind
-// to 127.0.0.1 do so precisely because they expect no outside callers) and
-// link-local, which is where cloud instances serve credentials at
-// 169.254.169.254.
-//
-// Private ranges are deliberately allowed. A self-hosted Vyzus notifying a
-// self-hosted Mattermost at 10.0.0.5 is the normal case for this product, and
-// blocking it would break more than it protects. See the tracking issue for
-// what that leaves open.
+// POST /channels/:id/test reports whether a caller-supplied URL answered and
+// with what status, so any account holder can use it as a probe. Blocked:
+// loopback and link-local (169.254.169.254 serves cloud credentials) — never
+// real notification targets. Private ranges stay allowed: notifying a
+// self-hosted service on the LAN is the normal deployment.
 
 /**
  * The four octets of an IPv4 address, or null when the host is not one.
- *
- * Also unwraps IPv4-mapped IPv6, which is loopback wearing a different hat.
- * WHATWG URL parsing normalises `::ffff:127.0.0.1` to the hex form
+ * Unwraps IPv4-mapped IPv6: WHATWG URL normalises `::ffff:127.0.0.1` to
  * `::ffff:7f00:1`, so matching the dotted quad alone would miss it.
  */
 function toIpv4Octets(host: string): [number, number, number, number] | null {
@@ -45,10 +33,9 @@ function toIpv4Octets(host: string): [number, number, number, number] | null {
 
 /** Hosts that are never a legitimate webhook target. */
 export function isBlockedWebhookHost(hostname: string): boolean {
-  // URL keeps IPv6 literals in brackets. The trailing dot of a fully qualified
-  // name is stripped too: `localhost.` resolves exactly like `localhost`, and
-  // WHATWG URL parsing preserves it (unlike the dot after an IPv4 literal,
-  // which it normalises away), so leaving it on is a way past this check.
+  // Strip the brackets URL puts around IPv6 literals, and the trailing dot of a
+  // fully qualified name — `localhost.` resolves identically and WHATWG keeps
+  // it on a name (it strips it after an IPv4 literal).
   const host = hostname
     .replace(/^\[|\]$/g, '')
     .replace(/\.+$/, '')
@@ -72,10 +59,7 @@ export function isBlockedWebhookHost(hostname: string): boolean {
   return false;
 }
 
-/**
- * Validation message for a rejected URL. Separate from the predicate so the
- * Zod schema and any caller phrase it identically.
- */
+/** Shared so every caller rejects with the same wording. */
 export const BLOCKED_WEBHOOK_HOST_MESSAGE =
   'Webhook URL may not point at loopback or link-local addresses. Use an address reachable from the Vyzus container.';
 
@@ -85,7 +69,7 @@ export function isAllowedWebhookUrl(url: string): boolean {
   try {
     parsed = new URL(url);
   } catch {
-    return false; // shape is the URL validator's job; nothing to check here
+    return false; // malformed: the URL validator reports that, not this
   }
   return !isBlockedWebhookHost(parsed.hostname);
 }

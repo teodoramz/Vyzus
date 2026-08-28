@@ -19,15 +19,13 @@ import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { deliverToChannel, sampleAlertPayload } from '../services/alerter.js';
 import { accessibleAppIds, assertChannelOwnership } from '../lib/access.js';
 
-// Channel management remains admin-only for global channels (editor is
-// excluded, exactly as before this role existed — editors manage apps/
-// checks, never alert routing). The only change: a viewer may additionally
-// create/manage channels of their own — self-service alert routing for the
-// apps they're assigned to — but never sees or touches another user's
-// channels, and can't target apps outside their assignment or use "all
-// apps" (that would reach apps they can't see). See lib/access.ts
-// assertChannelOwnership. `app.requireRole('viewer')` reads oddly here but
-// is exactly "admin (bypasses) or viewer" — editor is not in the allow-list.
+// Global channels stay admin-only; editors manage apps and checks, never alert
+// routing. A viewer may create and manage channels they own — self-service
+// routing for their assigned apps — but never another user's, and never
+// "all apps" or an app outside their assignment. See assertChannelOwnership.
+//
+// `requireRole('viewer')` reads oddly: it means "admin (which bypasses) or
+// viewer", with editor deliberately absent from the allow-list.
 export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
   const authed = [app.authenticate, app.requireRole('viewer')];
 
@@ -85,7 +83,7 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
         await assertViewerChannelScope(user.id, allowedIds, { allApps, appIds });
         ownerId = user.id;
       }
-      // Credentials never reach the jsonb column — see shared/channel-secrets.ts.
+      // Credentials never reach the jsonb column; see shared/channel-secrets.ts.
       const split = splitChannelSecrets(config);
       const secretsEnc = split.secrets ? encryptJson(split.secrets, app.encryptionKey) : null;
       const row = await app.db.transaction(async (tx) => {
@@ -136,16 +134,13 @@ export const channelRoutes: FastifyPluginAsyncZod = async (app) => {
       if (b.config !== undefined) {
         const split = splitChannelSecrets(b.config);
         patch.config = split.config;
-        // A submitted config with no credential means "leave the stored one
-        // alone" — the dashboard sends blank fields to keep the existing
-        // secret, exactly as it does for application credentials.
+        // No credential submitted means "keep the stored one" — the dashboard
+        // sends blank fields to leave a secret unchanged.
         if (split.secrets) patch.secretsEnc = encryptJson(split.secrets, app.encryptionKey);
       }
-      // A webhook signing secret means nothing to an SMTP transport. Changing
-      // the type makes the stored credential meaningless, so drop it rather
-      // than leave a blob nobody can account for — unless this same request
-      // supplied a replacement. `type` may arrive without `config`, so this
-      // cannot live in the branch above.
+      // A webhook signing secret means nothing to an SMTP transport, so a type
+      // change discards it unless this request supplied a replacement. `type`
+      // may arrive without `config`, so this cannot live in the branch above.
       if (b.type !== undefined && b.type !== existing.type && patch.secretsEnc === undefined) {
         patch.secretsEnc = null;
       }

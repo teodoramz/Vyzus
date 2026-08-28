@@ -1,11 +1,10 @@
 // Splitting channel credentials out of the stored config.
 //
-// `alert_channels.config` is plain jsonb: it is queried, returned to the
-// dashboard and included in any database dump. Credentials do not belong there,
-// so they are separated here and stored encrypted alongside — the same
-// treatment `applications.auth_config_enc` already gives target credentials.
+// `alert_channels.config` is plain jsonb — queried, returned to the dashboard,
+// and present in any database dump. Credentials are separated here and stored
+// encrypted alongside, as `applications.auth_config_enc` already does.
 //
-// Pure, so the split and merge are symmetrical and testable without a key.
+// Pure, so split and merge stay symmetrical and testable without a key.
 import type { ChannelConfig } from './schemas/channels.js';
 
 /** The credential fields, extracted from a config. */

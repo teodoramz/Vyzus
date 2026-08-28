@@ -1,15 +1,12 @@
-// Public status page (backlog task 18).
+// Public status page.
 //
-// Unauthenticated and deliberately narrow. The whole risk of this feature is
-// leaking something, so it opts applications IN (`applications.is_public`,
-// default false) and returns a purpose-built shape rather than reusing the
-// authenticated app views — see schemas/status.ts for what is excluded and why.
+// Unauthenticated and deliberately narrow. Applications opt IN
+// (`applications.is_public`, default false) and the response has its own shape
+// rather than reusing the authenticated views — see schemas/status.ts.
 //
-// Notably this does NOT go through lib/access.ts. That layer answers "which
-// applications may this *user* see", and there is no user here; the question is
-// "which applications did an operator publish", which is a different one. Using
-// the RBAC layer with a null user would be the kind of shortcut that turns into
-// a leak the first time its defaults change.
+// Deliberately does not use lib/access.ts: that layer answers "what may this
+// *user* see", and there is no user here. Passing it a null user would be the
+// kind of shortcut that leaks the first time its defaults change.
 import { and, desc, eq, gte, inArray, sql } from 'drizzle-orm';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import {
@@ -27,12 +24,10 @@ import { hitFixedWindow } from '../lib/fixed-window.js';
 import { tooManyRequests } from '../lib/errors.js';
 
 /**
- * This is the only unauthenticated endpoint that touches the database, and it
- * runs five queries per request. Without a cache it is a free amplification
- * primitive: anyone can loop it and push load onto Postgres.
- *
- * The payload is derived from check results that change on check intervals
- * (minutes), so a short cache costs nothing in freshness.
+ * Five queries per request on the only unauthenticated endpoint that touches
+ * the database — uncached, a free amplification primitive. The payload derives
+ * from check results that change on intervals of minutes, so the cache costs
+ * no useful freshness.
  */
 const CACHE_KEY = 'vyzus:status-page';
 const CACHE_SECONDS = 30;
@@ -56,7 +51,7 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
       throw tooManyRequests('Too many requests', 'RATE_LIMITED');
     }
 
-    // Lets a browser, proxy or CDN absorb repeat traffic before it reaches us.
+    // Let a browser, proxy or CDN absorb repeats before they reach us.
     reply.header('Cache-Control', `public, max-age=${CACHE_SECONDS}`);
 
     const cached = await app.redis.get(CACHE_KEY);
@@ -80,8 +75,8 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
         recentIncidents: [],
         generatedAt: now.toISOString(),
       };
-      // Cached like any other result: publishing nothing is the default state,
-      // and it would be odd if the uncached path were the common one.
+      // Publishing nothing is the default state; it should not be the one
+      // uncached path.
       await app.redis.set(CACHE_KEY, JSON.stringify(empty), 'EX', CACHE_SECONDS);
       return empty;
     }
@@ -95,9 +90,8 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
       checksByApp.set(c.appId, list);
     }
 
-    // Availability per app over both windows, in two grouped queries rather
-    // than one per app — a status page is the most-hit endpoint here and is
-    // served to anyone, so it must not be an N+1.
+    // Two grouped queries rather than one per app: this is the most-hit
+    // endpoint and is served to anyone, so it must not be an N+1.
     async function availability(sinceMs: number): Promise<Map<string, number | null>> {
       const rows = await app.db
         .select({
@@ -121,9 +115,8 @@ export const statusRoutes: FastifyPluginAsyncZod = async (app) => {
       availability30d: avail30d.get(a.id) ?? null,
     }));
 
-    // Incidents from the last 30 days, on public applications only, stripped to
-    // timing. `appName` is the only identity exposed — not the check, which
-    // would describe the internal topology.
+    // Public applications only, stripped to timing. `appName` is the only
+    // identity exposed; the check name would describe internal topology.
     const incidentRows = await app.db
       .select({
         id: incidents.id,

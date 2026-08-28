@@ -330,8 +330,8 @@ export async function deliverToChannel(
   // Email is SMTP, not an HTTP POST, so it needs its own transport — but it
   // reuses the same retry/backoff loop and reports the same DeliveryOutcome, so
   // `alert_deliveries` logging upstream stays identical for every channel type.
-  // Credentials live encrypted in their own column; rejoin them only here, at
-  // the point of use, so they exist in memory for as short a span as possible.
+  // Credentials live encrypted in their own column; rejoined only here, at the
+  // point of use.
   const full = mergeChannelSecrets(channel.config, secrets);
 
   if (isEmailChannelConfig(full)) {
@@ -566,9 +566,9 @@ export function startAlerter(options: AlerterOptions): Worker {
               );
 
       for (const { channel } of channelRows) {
-        // An unreadable blob — a rotated key, a truncated column — must cost
-        // this one channel, not the whole incident: throwing here would abandon
-        // every channel after it with no delivery row to show for it.
+        // An unreadable blob (rotated key, truncated column) must cost this
+        // channel, not the incident: throwing would abandon every channel after
+        // it with no delivery row to show for it.
         let secrets: ChannelSecrets | null = null;
         try {
           if (channel.secretsEnc) secrets = decryptJson<ChannelSecrets>(channel.secretsEnc, encryptionKey);
