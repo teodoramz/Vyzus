@@ -9,6 +9,14 @@ import { notFound } from '../lib/errors.js';
 import { encodeCursor, decodeCursor } from '../lib/cursor.js';
 import { assertCheckAccess, assertRunAccess } from '../lib/access.js';
 
+/** The two artifacts differ only in these four things. */
+interface ArtifactKind {
+  column: 'screenshotPath' | 'tracePath';
+  contentType: string;
+  missing: string;
+  attachment: ((runId: string) => string) | null;
+}
+
 export const runRoutes: FastifyPluginAsyncZod = async (app) => {
   // GET /checks/:id/runs — keyset pagination on (started_at, id) desc.
   app.get(
@@ -58,39 +66,46 @@ export const runRoutes: FastifyPluginAsyncZod = async (app) => {
 
   // Artifact streaming — auth required, paths come from the DB (never from the
   // client), and are resolved inside ARTIFACTS_DIR only.
-  const streamArtifact = (relPath: string, contentType: string, downloadName?: string) => {
+  function openArtifact(relPath: string) {
     const root = path.resolve(app.config.ARTIFACTS_DIR);
     const abs = path.resolve(root, relPath);
     if (!abs.startsWith(root + path.sep)) throw notFound('Artifact not found');
     if (!existsSync(abs)) throw notFound('Artifact file missing');
-    const stream = createReadStream(abs);
-    return { stream, contentType, downloadName };
-  };
+    return createReadStream(abs);
+  }
 
-  app.get(
-    '/runs/:id/artifacts/screenshot',
-    { preHandler: app.authenticate, schema: { params: idParamSchema } },
-    async (req, reply) => {
-      const [row] = await app.db.select().from(runs).where(eq(runs.id, req.params.id)).limit(1);
-      if (!row || !row.screenshotPath) throw notFound('No screenshot for this run');
-      await assertRunAccess(app.db, req.authUser!, row.id);
-      const { stream, contentType } = streamArtifact(row.screenshotPath, 'image/png');
-      return reply.type(contentType).send(stream);
+  const ARTIFACTS = {
+    screenshot: {
+      column: 'screenshotPath',
+      contentType: 'image/png',
+      missing: 'No screenshot for this run',
+      attachment: null,
     },
-  );
+    trace: {
+      column: 'tracePath',
+      contentType: 'application/zip',
+      missing: 'No trace for this run',
+      // Browsers would otherwise try to render the zip inline.
+      attachment: (runId: string) => `trace-${runId}.zip`,
+    },
+  } as const satisfies Record<string, ArtifactKind>;
 
-  app.get(
-    '/runs/:id/artifacts/trace',
-    { preHandler: app.authenticate, schema: { params: idParamSchema } },
-    async (req, reply) => {
-      const [row] = await app.db.select().from(runs).where(eq(runs.id, req.params.id)).limit(1);
-      if (!row || !row.tracePath) throw notFound('No trace for this run');
-      await assertRunAccess(app.db, req.authUser!, row.id);
-      const { stream, contentType } = streamArtifact(row.tracePath, 'application/zip');
-      return reply
-        .type(contentType)
-        .header('content-disposition', `attachment; filename="trace-${row.id}.zip"`)
-        .send(stream);
-    },
-  );
+  for (const [name, kind] of Object.entries(ARTIFACTS)) {
+    app.get(
+      `/runs/:id/artifacts/${name}`,
+      { preHandler: app.authenticate, schema: { params: idParamSchema } },
+      async (req, reply) => {
+        const [row] = await app.db.select().from(runs).where(eq(runs.id, req.params.id)).limit(1);
+        const relPath = row?.[kind.column];
+        if (!row || !relPath) throw notFound(kind.missing);
+        await assertRunAccess(app.db, req.authUser!, row.id);
+
+        reply.type(kind.contentType);
+        if (kind.attachment) {
+          reply.header('content-disposition', `attachment; filename="${kind.attachment(row.id)}"`);
+        }
+        return reply.send(openArtifact(relPath));
+      },
+    );
+  }
 };
