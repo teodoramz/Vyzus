@@ -96,19 +96,13 @@ export function AppCard({ app, prominent = false }: { app: AppSummary; prominent
         prominent ? 'ring-1 ring-rose-500/30' : ''
       }`}
     >
-      <Link to={`/apps/${app.id}`} className="block">
-        <div className="h-32 w-full overflow-hidden border-b border-gray-200 dark:border-white/10">
-          <ScreenshotThumb
-            runId={app.latestScreenshotRunId}
-            alt={`${app.name} latest screenshot`}
-            className="h-full w-full"
-          />
-        </div>
-      </Link>
-
       <div className="flex flex-1 flex-col gap-3 p-4">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
+        {/* Name and status lead; the screenshot is corroboration, not the
+            headline. At thumbnail size it answers "is the page still there and
+            does it still look like itself" — the detail view is where a
+            screenshot is worth reading. */}
+        <div className="flex items-start gap-3">
+          <div className="min-w-0 flex-1">
             <Link
               to={`/apps/${app.id}`}
               className="flex items-center gap-2 truncate font-semibold text-slate-900 hover:underline dark:text-zinc-100"
@@ -122,22 +116,35 @@ export function AppCard({ app, prominent = false }: { app: AppSummary; prominent
               <span className="truncate">{app.name}</span>
             </Link>
             <p className="truncate font-mono text-xs text-slate-400 dark:text-zinc-500">{app.landingUrl}</p>
+            {app.tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {app.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-white/10 dark:text-zinc-400"
+                  >
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <span className={`shrink-0 font-mono text-xs font-bold tracking-wide ${style.text}`}>{app.status}</span>
-        </div>
 
-        {app.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {app.tags.map((tag) => (
-              <span
-                key={tag}
-                className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-white/10 dark:text-zinc-400"
-              >
-                {tag}
-              </span>
-            ))}
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <span className={`font-mono text-xs font-bold tracking-wide ${style.text}`}>{app.status}</span>
+            <Link
+              to={`/apps/${app.id}`}
+              className="block h-14 w-24 overflow-hidden rounded-md border border-gray-200 dark:border-white/10"
+              aria-label={`${app.name} latest screenshot`}
+            >
+              <ScreenshotThumb
+                runId={app.latestScreenshotRunId}
+                alt={`${app.name} latest screenshot`}
+                className="h-full w-full"
+              />
+            </Link>
           </div>
-        )}
+        </div>
 
         <div className="grid grid-cols-2 gap-2">
           <div>
