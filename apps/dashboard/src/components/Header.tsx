@@ -76,7 +76,9 @@ export function Header(): JSX.Element {
         </div>
       )}
       <MaintenanceBanner />
-      <div className="mx-auto flex max-w-7xl items-center gap-6 px-4 py-3">
+      {/* Wraps on small screens: brand and actions keep the top row, the nav
+          drops below rather than pushing the page into a sideways scroll. */}
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
         <NavLink
           to="/"
           className="flex items-center gap-2.5 text-base font-semibold tracking-tight text-slate-900 dark:text-zinc-100"
@@ -85,7 +87,7 @@ export function Header(): JSX.Element {
           Vyzus
         </NavLink>
 
-        <nav className="flex items-center gap-1">
+        <nav className="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto px-1 sm:order-none sm:mx-0 sm:w-auto sm:overflow-visible sm:px-0">
           <NavLink to="/" end className={navLinkClass}>
             Overview
           </NavLink>
