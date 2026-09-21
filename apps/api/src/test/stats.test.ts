@@ -46,6 +46,9 @@ async function makeApp(name: string, lastStatus: 'passed' | 'failed' | null, ena
     intervalMinutes: 5,
     enabled,
     lastStatus,
+    // Confirmed failure: at the default failureThreshold of 2, so the status
+    // derivation treats it as an outage rather than a single blip.
+    consecutiveFailures: lastStatus === 'failed' ? 2 : 0,
     lastRunAt: lastStatus ? new Date() : null,
     config: {
       mode: 'http',
@@ -68,6 +71,9 @@ describe('GET /stats', () => {
       name: 'second',
       intervalMinutes: 5,
       lastStatus: 'failed',
+      // Past the default threshold of 2, so this is a confirmed failure rather
+      // than a blip that deriveAppStatus would still read as UP.
+      consecutiveFailures: 2,
       lastRunAt: new Date(),
       config: {
         mode: 'http',

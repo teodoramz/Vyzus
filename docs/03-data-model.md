@@ -186,6 +186,8 @@ on-demand availability queries ever get slow (see 02-architecture §6).
   not an unreachable site); `DEGRADED` when some are failing and
   some are not, including when only a `journey` fails (a broken flow is not a dead
   site, so a journey can never produce `DOWN`); `PAUSED` when the app or all its
-  checks are disabled; `UNKNOWN` before anything has run. See
+  checks are disabled; `UNKNOWN` before anything has run. "Failing" means
+  `consecutive_failures >= failure_threshold`, so a single bad run does not move
+  the badge — the same rule that gates incidents. See
   `apps/api/src/lib/queries.ts` `deriveAppStatus()`.
 - **Availability %** = `count(status='passed') / count(*)` over the window from `runs`.

@@ -42,10 +42,28 @@ export async function availabilityForChecks(db: Database, checkIds: string[], si
  *
  * - PAUSED   — app disabled, or every check disabled
  * - UNKNOWN  — no check has produced a result yet
- * - UP       — everything that has run is passing
+ * - UP       — nothing is confirmed failing
  * - DOWN     — at least one liveness check exists and all of them are failing
  * - DEGRADED — anything else: some failing, some passing
+ *
+ * "Failing" means the failures have persisted to the check's own
+ * `failureThreshold` — see isFailing below.
  */
+/**
+ * Whether a check counts as failing, as opposed to having merely blipped.
+ *
+ * A single bad run is not an outage: one timeout on a busy network, one 502
+ * from a node being replaced. `failureThreshold` is what the operator set as
+ * "enough to believe it", and it is already what decides whether an incident
+ * opens and an alert goes out (worker/incidents.ts). Deriving the badge from
+ * the same counter keeps the two from disagreeing — before this, a check could
+ * show DEGRADED while nobody was ever paged, and go back to UP by itself a
+ * minute later.
+ */
+function isFailing(check: CheckRow): boolean {
+  return check.lastStatus !== 'passed' && check.consecutiveFailures >= check.failureThreshold;
+}
+
 export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppStatus {
   const relevant = checks.filter((c) => c.type === 'uptime' || c.type === 'journey' || c.type === 'push');
   if (relevant.length === 0) return 'UNKNOWN';
@@ -56,7 +74,7 @@ export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppSta
   const withStatus = enabled.filter((c) => c.lastStatus != null);
   if (withStatus.length === 0) return 'UNKNOWN';
 
-  const failing = withStatus.filter((c) => c.lastStatus !== 'passed');
+  const failing = withStatus.filter(isFailing);
   if (failing.length === 0) return 'UP';
 
   // Only liveness checks can express "unreachable". If every one of them has
@@ -66,7 +84,7 @@ export function deriveAppStatus(appEnabled: boolean, checks: CheckRow[]): AppSta
   // task stopped, not that the site is unreachable. Like a failing journey it
   // degrades the application without ever marking it DOWN.
   const liveness = withStatus.filter((c) => c.type === 'uptime');
-  if (liveness.length > 0 && liveness.every((c) => c.lastStatus !== 'passed')) return 'DOWN';
+  if (liveness.length > 0 && liveness.every(isFailing)) return 'DOWN';
 
   return 'DEGRADED';
 }

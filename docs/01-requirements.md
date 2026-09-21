@@ -64,6 +64,11 @@
   - Both `uptime` modes drive the application's status badge. `DOWN` requires *every*
     liveness check to be failing; a single failing check among several is `DEGRADED`.
     A failing `journey` can degrade an application but never marks it `DOWN`.
+  - A check counts as failing only once its failures reach its own
+    `failureThreshold` — the same counter that decides whether an incident opens.
+    One bad run leaves the application `UP`, so a badge never reports an outage
+    nobody was alerted about, and a blip that recovers never leaves an app
+    `DEGRADED` behind it.
 - FR-1.4 **Login throttling**: `POST /auth/login` refuses further attempts with `429`
   and a `Retry-After` header once 8 failures accumulate inside 15 minutes. Two
   independent counters, either of which can lock: one per email address (one account

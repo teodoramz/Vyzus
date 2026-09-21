@@ -36,6 +36,8 @@ async function seedApp(opts: { name: string; isPublic: boolean; failing?: boolea
       name: 'Internal check name',
       intervalMinutes: 5,
       lastStatus: opts.failing ? 'failed' : 'passed',
+      // Confirmed failure: at or past the default failureThreshold of 2.
+      consecutiveFailures: opts.failing ? 2 : 0,
       config: {
         mode: 'http',
         expectedStatus: 200,

@@ -16,7 +16,10 @@ import {
 } from '@vyzus/shared';
 import type { CheckRow } from '../db/schema.js';
 
-/** Only the fields deriveAppStatus reads; the rest are irrelevant to the pure function. */
+/**
+ * Only the fields deriveAppStatus reads; the rest are irrelevant to the pure
+ * function. `failureThreshold` is 2, matching the product default.
+ */
 function check(overrides: Partial<CheckRow>): CheckRow {
   return {
     id: 'c1',
@@ -53,8 +56,8 @@ describe('deriveAppStatus', () => {
 
   it('is DOWN only when every liveness check is failing', () => {
     const checks = [
-      check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
-      check({ id: 'u2', type: 'uptime', lastStatus: 'timeout' }),
+      check({ id: 'u1', type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 }),
+      check({ id: 'u2', type: 'uptime', lastStatus: 'timeout', consecutiveFailures: 2 }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('DOWN');
   });
@@ -62,7 +65,7 @@ describe('deriveAppStatus', () => {
   it('is DEGRADED — not DOWN — when only some liveness checks are failing', () => {
     const checks = [
       check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
-      check({ id: 'u2', type: 'uptime', lastStatus: 'failed' }),
+      check({ id: 'u2', type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
   });
@@ -70,21 +73,25 @@ describe('deriveAppStatus', () => {
   it('a failing journey degrades the app but never marks it down', () => {
     const checks = [
       check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
-      check({ id: 'j1', type: 'journey', lastStatus: 'failed' }),
+      check({ id: 'j1', type: 'journey', lastStatus: 'failed', consecutiveFailures: 2 }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
 
     // Journey-only app: still never DOWN, however broken the flow is.
-    expect(deriveAppStatus(true, [check({ type: 'journey', lastStatus: 'failed' })])).toBe('DEGRADED');
+    expect(deriveAppStatus(true, [check({ type: 'journey', lastStatus: 'failed', consecutiveFailures: 2 })])).toBe(
+      'DEGRADED',
+    );
   });
 
   it('a single failing liveness check is DOWN when it is the only one', () => {
-    expect(deriveAppStatus(true, [check({ type: 'uptime', lastStatus: 'failed' })])).toBe('DOWN');
+    expect(deriveAppStatus(true, [check({ type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 })])).toBe(
+      'DOWN',
+    );
   });
 
   it('a down app stays DOWN even while a journey happens to pass', () => {
     const checks = [
-      check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
+      check({ id: 'u1', type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 }),
       check({ id: 'j1', type: 'journey', lastStatus: 'passed' }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('DOWN');
@@ -93,7 +100,7 @@ describe('deriveAppStatus', () => {
   it('ignores checks that have never run when judging DOWN', () => {
     // u2 has no result yet, so "all liveness failing" is judged on u1 alone.
     const checks = [
-      check({ id: 'u1', type: 'uptime', lastStatus: 'failed' }),
+      check({ id: 'u1', type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 }),
       check({ id: 'u2', type: 'uptime', lastStatus: null }),
     ];
     expect(deriveAppStatus(true, checks)).toBe('DOWN');
@@ -106,6 +113,58 @@ describe('deriveAppStatus', () => {
 
   it('is UNKNOWN when the only enabled check has never run', () => {
     expect(deriveAppStatus(true, [check({ lastStatus: null })])).toBe('UNKNOWN');
+  });
+
+  // A badge that flips on one bad run disagrees with the alerting, which waits
+  // for failureThreshold. The two now read the same counter.
+  describe('sustained failure', () => {
+    it('stays UP while a failure has not reached the threshold', () => {
+      const checks = [check({ type: 'uptime', lastStatus: 'failed', consecutiveFailures: 1 })];
+      expect(deriveAppStatus(true, checks)).toBe('UP');
+    });
+
+    it('turns DOWN once the threshold is reached', () => {
+      const checks = [check({ type: 'uptime', lastStatus: 'failed', consecutiveFailures: 2 })];
+      expect(deriveAppStatus(true, checks)).toBe('DOWN');
+    });
+
+    it('does not degrade an app for one blip on a second check', () => {
+      const checks = [
+        check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
+        check({ id: 'u2', type: 'uptime', lastStatus: 'timeout', consecutiveFailures: 1 }),
+      ];
+      expect(deriveAppStatus(true, checks)).toBe('UP');
+    });
+
+    it('degrades once that second check keeps failing', () => {
+      const checks = [
+        check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
+        check({ id: 'u2', type: 'uptime', lastStatus: 'timeout', consecutiveFailures: 2 }),
+      ];
+      expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
+    });
+
+    // The worker zeroes the counter on a passing run, so recovery is immediate
+    // — an app should not stay degraded once it is answering again.
+    it('returns to UP as soon as the check passes again', () => {
+      const checks = [check({ type: 'uptime', lastStatus: 'passed', consecutiveFailures: 0 })];
+      expect(deriveAppStatus(true, checks)).toBe('UP');
+    });
+
+    it('honours a threshold the operator raised', () => {
+      const four = { type: 'uptime' as const, lastStatus: 'failed' as const, failureThreshold: 4 };
+      expect(deriveAppStatus(true, [check({ ...four, consecutiveFailures: 3 })])).toBe('UP');
+      expect(deriveAppStatus(true, [check({ ...four, consecutiveFailures: 4 })])).toBe('DOWN');
+    });
+
+    // A threshold of 1 is "tell me immediately", and must still work that way.
+    it('degrades on the first failure when the threshold is 1', () => {
+      const checks = [
+        check({ id: 'u1', type: 'uptime', lastStatus: 'passed' }),
+        check({ id: 'j1', type: 'journey', lastStatus: 'failed', failureThreshold: 1, consecutiveFailures: 1 }),
+      ];
+      expect(deriveAppStatus(true, checks)).toBe('DEGRADED');
+    });
   });
 });
 
