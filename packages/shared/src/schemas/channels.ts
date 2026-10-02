@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CHANNEL_TYPES, ALERT_EVENTS, DELIVERY_STATUSES } from '../constants.js';
-import { accountIdentifierOutSchema, isoTimestamp, uuidSchema } from './common.js';
+import { accountIdentifierOutSchema, emailSchema, isoTimestamp, uuidSchema } from './common.js';
 import { validateAlertTemplate } from '../alert-template.js';
 import { isAllowedWebhookUrl, BLOCKED_WEBHOOK_HOST_MESSAGE } from '../webhook-host.js';
 
@@ -39,9 +39,9 @@ export const emailChannelConfigSchema = z.object({
   secure: z.boolean().default(false),
   username: z.string().min(1).max(320).optional(),
   password: z.string().min(1).max(500).optional(),
-  from: z.string().email(),
+  from: emailSchema,
   /** One channel, many recipients — matches how operators actually route mail. */
-  to: z.array(z.string().email()).min(1).max(50),
+  to: z.array(emailSchema).min(1).max(50),
 });
 export type EmailChannelConfig = z.infer<typeof emailChannelConfigSchema>;
 

@@ -199,6 +199,20 @@ describe('SMTP delivery', () => {
     expect(outcome.attempts).toBe(3);
   });
 
+  // The same internal domain must work as a recipient, not just as a login.
+  it('delivers to an address whose domain ends in digits', async () => {
+    const outcome = await deliverToChannel(
+      emailChannel({ from: 'vyzus@host01.internal7', to: ['ops@host01.internal7'] }),
+      null,
+      sampleAlertPayload(PUBLIC_URL),
+      PUBLIC_URL,
+      { maxAttempts: 1 },
+    );
+
+    expect(outcome.ok).toBe(true);
+    expect(relay.received[0]!.to).toEqual(['ops@host01.internal7']);
+  });
+
   it('reports failure when nothing is listening', async () => {
     const outcome = await deliverToChannel(
       { ...emailChannel(), config: { ...emailChannel().config, port: 1 } },

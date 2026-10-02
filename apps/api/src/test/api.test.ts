@@ -248,8 +248,32 @@ describe('refresh rotation', () => {
     expect((await login(ctx.app, '  HOST01.Internal7  ', 'unit-password-1')).accessToken).toBeTruthy();
   });
 
+  // Zod's own .email() requires the last domain label to be letters, which
+  // rejects a real address on an internal network.
+  it('accepts an address whose domain ends in digits', async () => {
+    const create = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/users',
+      headers: authHeader(adminToken),
+      payload: { email: 'admin@host01.internal7', password: 'unit-password-1', role: 'viewer' },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.json().email).toBe('admin@host01.internal7');
+    expect((await login(ctx.app, 'admin@host01.internal7', 'unit-password-1')).accessToken).toBeTruthy();
+  });
+
   it('still rejects a malformed address', async () => {
-    for (const email of ['a@b', 'not an email', 'ab', '.leading', 'trailing.']) {
+    for (const email of [
+      'a@b',
+      'not an email',
+      'ab',
+      '.leading',
+      'trailing.',
+      'admin@localhost', // one label is a hostname, not a mail domain
+      'admin@gmailcom', // the typo this check exists to catch
+      'admin@-bad.ro',
+      '@example.ro',
+    ]) {
       const res = await ctx.app.inject({
         method: 'POST',
         url: '/api/v1/users',
