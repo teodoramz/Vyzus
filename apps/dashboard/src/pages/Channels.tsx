@@ -147,7 +147,9 @@ export function Channels(): JSX.Element {
                       </button>
                       <ConfirmButton
                         label="Delete"
-                        confirmLabel={`Delete channel "${c.name}"?`}
+                        title="Delete channel"
+                        body={`"${c.name}" will stop receiving alerts, and its delivery history will be removed. This cannot be undone.`}
+                        confirmLabel="Delete channel"
                         pendingLabel="Deleting…"
                         pending={remove.isPending && remove.variables === c.id}
                         onConfirm={() => remove.mutate(c.id)}

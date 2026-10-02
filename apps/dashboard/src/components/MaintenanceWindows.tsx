@@ -177,7 +177,14 @@ export function MaintenanceWindows(): JSX.Element {
                     {!readOnly && (
                       <ConfirmButton
                         label={w.active ? 'End now' : 'Remove'}
-                        confirmLabel="Confirm"
+                        title={w.active ? 'End this maintenance window' : 'Remove this maintenance window'}
+                        body={
+                          w.active
+                            ? 'Alerts for this application resume immediately.'
+                            : 'The window is removed and alerts will not be suppressed for that period.'
+                        }
+                        confirmLabel={w.active ? 'End window' : 'Remove window'}
+                        pendingLabel={w.active ? 'Ending…' : 'Removing…'}
                         onConfirm={() => remove.mutate(w.id)}
                         pending={remove.isPending}
                       />

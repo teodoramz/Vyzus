@@ -427,7 +427,9 @@ export function CheckEditor(): JSX.Element {
           {isEdit && (
             <ConfirmButton
               label="Delete check"
-              confirmLabel={`Delete check "${name}"?`}
+              title="Delete check"
+              body={`"${name}" will stop running, and its run history and incidents will be removed. This cannot be undone.`}
+              confirmLabel="Delete check"
               pendingLabel="Deleting…"
               pending={remove.isPending}
               onConfirm={() => remove.mutate()}

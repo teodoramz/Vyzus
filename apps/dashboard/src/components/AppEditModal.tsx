@@ -268,7 +268,9 @@ export function AppEditModal({ app, onClose }: { app: AppDetail; onClose: () => 
         <div className="flex items-center justify-between pt-2">
           <ConfirmButton
             label="Delete application"
-            confirmLabel={`Delete "${app.name}"? This removes all checks, runs, and incidents.`}
+            title="Delete application"
+            body={`"${app.name}" and all of its checks, runs, incidents and screenshots will be removed. This cannot be undone.`}
+            confirmLabel="Delete application"
             pendingLabel="Deleting…"
             pending={remove.isPending}
             onConfirm={() => remove.mutate()}
