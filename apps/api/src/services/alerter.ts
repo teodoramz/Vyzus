@@ -16,8 +16,10 @@ import {
   ALERT_SIGNATURE_HEADER,
   alertJobPayloadSchema,
   isMonitoringAlert,
+  alertTemplateVariables,
   isEmailChannelConfig,
   mergeChannelSecrets,
+  renderAlertTemplate,
   type ChannelSecrets,
   activeMaintenanceWindow,
   findFailingAncestor,
@@ -137,6 +139,22 @@ function renderMonitoringBody(type: ChannelType, p: MonitoringAlertWebhookPayloa
                 { type: 'mrkdwn', text: `*Dashboard:*\n<${publicUrl}|Open Vyzus>` },
               ],
             },
+          ],
+        },
+      ],
+    };
+  }
+
+  if (type === 'mattermost') {
+    return {
+      text: `**${title}**`,
+      attachments: [
+        {
+          color: stalled ? RED : GREEN,
+          text: detail,
+          fields: [
+            { short: true, title: 'Last run', value: lastRun },
+            { short: true, title: 'Threshold', value: `${p.monitoring.thresholdMinutes}m` },
           ],
         },
       ],
@@ -268,6 +286,32 @@ export function renderAlertBody(type: ChannelType, p: AlertWebhookPayload, publi
     return { attachments: [{ color: down ? RED : GREEN, blocks }] };
   }
 
+  if (type === 'mattermost') {
+    // `text` renders even where attachments are stripped; the attachment adds
+    // the colour bar that makes DOWN legible at a glance in a busy channel.
+    return {
+      text: `**${title}**`,
+      attachments: [
+        {
+          color: down ? RED : GREEN,
+          title: p.application.name,
+          title_link: appUrl,
+          text: down ? (p.run.errorMessage ?? 'The check failed.') : 'The check is passing again.',
+          fields: [
+            { short: true, title: 'Check', value: `${p.check.name} (${p.check.type})` },
+            { short: true, title: 'Run', value: `[${p.run.status}](${runUrl})` },
+            down
+              ? { short: false, title: 'Landing URL', value: p.application.landingUrl }
+              : { short: true, title: 'Downtime', value: humanDowntime(p.incident.downtimeSeconds) },
+            ...(p.run.screenshotUrl
+              ? [{ short: false, title: 'Screenshot', value: `[View](${p.run.screenshotUrl})` }]
+              : []),
+          ],
+        },
+      ],
+    };
+  }
+
   if (type === 'discord') {
     const fields = [
       { name: 'Application', value: `[${p.application.name}](${appUrl})`, inline: true },
@@ -339,7 +383,12 @@ export async function deliverToChannel(
   }
   const config = full;
 
-  const body = JSON.stringify(renderAlertBody(channel.type, payload, publicUrl));
+  // A template is the exact document the operator wants POSTed, so it is used
+  // verbatim rather than being re-serialised through the built-in renderers.
+  const body =
+    channel.type === 'webhook' && config.template
+      ? renderAlertTemplate(config.template, alertTemplateVariables(payload, publicUrl))
+      : JSON.stringify(renderAlertBody(channel.type, payload, publicUrl));
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (channel.type === 'webhook' && config.secret) {
     headers[ALERT_SIGNATURE_HEADER] = hmacSignature(config.secret, body);

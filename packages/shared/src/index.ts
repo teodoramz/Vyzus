@@ -11,4 +11,5 @@ export * from './dependencies.js';
 export * from './default-checks.js';
 export * from './channel-secrets.js';
 export * from './webhook-host.js';
+export * from './alert-template.js';
 export * from './schemas/index.js';

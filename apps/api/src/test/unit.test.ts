@@ -3,6 +3,13 @@ import { encryptJson, decryptJson } from '../lib/crypto.js';
 import { SignJWT } from 'jose';
 import { TokenService } from '../lib/tokens.js';
 import { deriveAppStatus } from '../lib/queries.js';
+import { renderAlertBody, sampleAlertPayload } from '../services/alerter.js';
+import {
+  ALERT_TEMPLATE_PRESETS,
+  alertTemplateVariables,
+  renderAlertTemplate,
+  validateAlertTemplate,
+} from '@vyzus/shared';
 import { loadConfig } from '../config.js';
 import {
   evaluateHeartbeat,
@@ -595,5 +602,81 @@ describe('defaultChecksFor', () => {
 
   it('degrades to the uptime check alone when the URL will not parse', () => {
     expect(names('not a url')).toEqual(['Landing uptime']);
+  });
+});
+
+// Verified against a real Mattermost incoming webhook (8065) while this was
+// written: the built-in renderer and both text presets are accepted, and an
+// error message full of quotes and newlines survives the round trip.
+describe('alert templates', () => {
+  const vars = { status: 'DOWN', title: 'DOWN: Shop', summary: 'HTTP 503', 'application.name': 'Shop' };
+
+  it('fills placeholders, with or without spaces', () => {
+    expect(renderAlertTemplate('{"t":"{{title}}","s":"{{ summary }}"}', vars)).toBe(
+      '{"t":"DOWN: Shop","s":"HTTP 503"}',
+    );
+  });
+
+  // The input most likely to break a hand-written template.
+  it('escapes quotes, newlines and backslashes so the document stays valid', () => {
+    const rendered = renderAlertTemplate('{"text":"{{summary}}"}', {
+      summary: 'He said "it is down"\nline two\ttabbed \\ backslash',
+    });
+    const parsed = JSON.parse(rendered) as { text: string };
+    expect(parsed.text).toBe('He said "it is down"\nline two\ttabbed \\ backslash');
+  });
+
+  // A typo should cost a gap in one alert, not the alert itself.
+  it('renders an unknown name as empty rather than throwing', () => {
+    expect(renderAlertTemplate('{"t":"{{nope}}"}', vars)).toBe('{"t":""}');
+  });
+
+  it('accepts a template that produces an object', () => {
+    for (const preset of ALERT_TEMPLATE_PRESETS) {
+      expect(validateAlertTemplate(preset.template), preset.id).toEqual({ ok: true });
+    }
+  });
+
+  it('rejects a template that does not produce JSON', () => {
+    expect(validateAlertTemplate('{"text": }').ok).toBe(false);
+    expect(validateAlertTemplate('just words').ok).toBe(false);
+    // A bare string is valid JSON but not a body any webhook accepts.
+    expect(validateAlertTemplate('"hello"').ok).toBe(false);
+  });
+
+  // Placeholders are data, not code: no expression ever gets evaluated.
+  it('does not evaluate anything inside a placeholder', () => {
+    expect(renderAlertTemplate('{"t":"{{constructor}}"}', vars)).toBe('{"t":""}');
+    expect(renderAlertTemplate('{"t":"{{__proto__}}"}', vars)).toBe('{"t":""}');
+  });
+
+  it('leaves application fields empty for a platform alert', () => {
+    const v = alertTemplateVariables(
+      {
+        event: 'monitoring.stalled',
+        monitoring: { lastRunAt: null, silentForSeconds: 600, thresholdMinutes: 5 },
+        timestamp: new Date().toISOString(),
+      },
+      'http://localhost:8080',
+    );
+    expect(v.status).toBe('STALLED');
+    expect(v['application.name']).toBe('');
+    expect(v['monitoring.lastRunAt']).toBe('never');
+  });
+});
+
+describe('mattermost rendering', () => {
+  const payload = sampleAlertPayload('http://localhost:8080');
+
+  it('sends text plus one coloured attachment', () => {
+    const body = renderAlertBody('mattermost', payload, 'http://localhost:8080') as {
+      text: string;
+      attachments: { color: string; fields: { title: string }[] }[];
+    };
+    expect(body.text).toContain('DOWN');
+    expect(body.attachments[0]!.color).toBe('#dc2626');
+    // `text` carries the headline on its own, so the message is still readable
+    // where attachments are stripped.
+    expect(body.attachments[0]!.fields.map((f) => f.title)).toContain('Check');
   });
 });

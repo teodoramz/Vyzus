@@ -78,18 +78,34 @@ rejected for them, every `appId` must be one they're assigned to, and they can
 never see or touch another user's channel (including admin-created global ones).
 `editor` has no channel access at all, unchanged from before the viewer role existed.
 
-Four channel types. Config is validated against `type` **in the request body**, which
+Five channel types. Config is validated against `type` **in the request body**, which
 is where the discriminant lives — `alert_channels.config` itself carries none and is
 never re-parsed on read, so `email` was added with no migration for existing rows.
 
 | type | config |
 |---|---|
-| `slack` / `discord` | `{ url }` |
-| `webhook` | `{ url, secret? }` — `secret` enables `X-Vyzus-Signature` |
+| `slack` / `discord` / `mattermost` | `{ url }` |
+| `webhook` | `{ url, secret?, template? }` — `secret` enables `X-Vyzus-Signature` |
 | `email` | `{ host, port, secure, username?, password?, from, to[] }` — SMTP |
 
 `secret` and `password` are stored encrypted in `alert_channels.secrets_enc`, never in
 `config`. On `PATCH`, omitting them keeps the stored value; changing `type` discards it.
+
+### Custom payloads
+
+A `webhook` channel may carry a `template`: the exact JSON body to POST, with
+`{{placeholders}}` filled from the alert. Without one it sends the raw payload above,
+unchanged. Placeholders belong inside quotes — `"text": "{{title}}"` — because values are
+escaped as JSON string contents, so an error message full of quotes and newlines cannot
+break the document. An unknown name renders empty rather than failing the delivery.
+
+Names: `status`, `title`, `summary`, `event`, `timestamp`, `dashboardUrl`,
+`application.{name,url,landingUrl}`, `check.{name,type}`,
+`run.{status,errorMessage,screenshotUrl,url}`, `incident.{downtime,openedAt}`. A platform
+`monitoring.*` alert has no application or run, so those render empty.
+
+The template is validated when the channel is saved — a body that cannot produce JSON is
+a `400`, not a delivery failure discovered at 3am.
 
 Responses never return a credential: `url` is null for `email`, `hasSecret` reports a
 webhook signing secret, `hasPassword` reports an SMTP password (deliberately separate —

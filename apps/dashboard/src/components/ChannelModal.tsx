@@ -2,6 +2,15 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Channel, ChannelType } from '@vyzus/shared';
+import { ALERT_TEMPLATE_PRESETS, ALERT_TEMPLATE_VARIABLES, validateAlertTemplate } from '@vyzus/shared';
+
+const TYPE_LABEL: Record<ChannelType, string> = {
+  slack: 'Slack',
+  discord: 'Discord',
+  mattermost: 'Mattermost',
+  webhook: 'Webhook (custom)',
+  email: 'Email (SMTP)',
+};
 import { CHANNEL_TYPES } from '@vyzus/shared';
 import { appsApi, channelsApi } from '../api/endpoints';
 import { ApiError } from '../api/http';
@@ -20,6 +29,8 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
   const isEdit = !!channel;
   const [name, setName] = useState(channel?.name ?? '');
   const [type, setType] = useState<ChannelType>(channel?.type ?? 'webhook');
+  const [template, setTemplate] = useState('');
+  const [templateError, setTemplateError] = useState<string | null>(null);
   const [url, setUrl] = useState(channel?.url ?? '');
   const [secret, setSecret] = useState('');
   // Email (SMTP). Kept in separate state from the webhook URL so switching type
@@ -54,9 +65,11 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
               ...(smtpUser ? { username: smtpUser } : {}),
               ...(smtpPassword ? { password: smtpPassword } : {}),
             }
-          : secret
-            ? { url, secret }
-            : { url };
+          : {
+              url,
+              ...(secret ? { secret } : {}),
+              ...(type === 'webhook' && template.trim() ? { template } : {}),
+            };
       const body = { name, type, config, enabled, allApps, appIds };
       return isEdit
         ? channelsApi.update(channel!.id, body as Parameters<typeof channelsApi.update>[1])
@@ -106,7 +119,7 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
           >
             {CHANNEL_TYPES.map((t) => (
               <option key={t} value={t}>
-                {t}
+                {TYPE_LABEL[t]}
               </option>
             ))}
           </select>
@@ -236,6 +249,68 @@ export function ChannelModal({ channel, onClose }: { channel: Channel | null; on
             <p className="mt-1 text-xs text-slate-400 dark:text-zinc-500">
               Signs deliveries with X-Vyzus-Signature (HMAC-SHA256).
             </p>
+          </div>
+        )}
+
+        {type === 'webhook' && (
+          <div>
+            <label htmlFor="channel-template" className={labelClass}>
+              Payload (optional)
+            </label>
+            <p className="mb-2 text-xs text-slate-400 dark:text-zinc-500">
+              Leave empty to send the full alert as JSON. Fill it in to POST exactly the body a service expects — put
+              placeholders inside quotes, like <code>"text": "&#123;&#123;title&#125;&#125;"</code>.
+            </p>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {ALERT_TEMPLATE_PRESETS.map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  title={preset.hint}
+                  onClick={() => {
+                    setTemplate(preset.template);
+                    setTemplateError(null);
+                  }}
+                  className="rounded-full border border-gray-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-gray-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/10"
+                >
+                  {preset.label}
+                </button>
+              ))}
+              {template && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTemplate('');
+                    setTemplateError(null);
+                  }}
+                  className="rounded-full border border-gray-200 px-2 py-0.5 text-xs text-slate-600 hover:bg-gray-100 dark:border-white/10 dark:text-zinc-400 dark:hover:bg-white/10"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            <textarea
+              id="channel-template"
+              rows={8}
+              value={template}
+              spellCheck={false}
+              onChange={(e) => {
+                setTemplate(e.target.value);
+                const v = e.target.value.trim();
+                setTemplateError(v ? (validateAlertTemplate(v).ok ? null : 'Not valid JSON once filled in') : null);
+              }}
+              className={`${inputClass} font-mono text-xs`}
+              placeholder={'{\n  "text": "{{title}}"\n}'}
+            />
+            {templateError && <p className="mt-1 text-xs text-red-600 dark:text-rose-400">{templateError}</p>}
+            <details className="mt-2">
+              <summary className="cursor-pointer text-xs text-slate-400 dark:text-zinc-500">
+                Available placeholders
+              </summary>
+              <p className="mt-1 font-mono text-[11px] leading-5 text-slate-500 dark:text-zinc-400">
+                {ALERT_TEMPLATE_VARIABLES.map((v) => `{{${v}}}`).join('  ')}
+              </p>
+            </details>
           </div>
         )}
 

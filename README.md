@@ -46,9 +46,10 @@ response-time metrics, screenshots, incident history and alerting.
 - **Dashboard** — grid of all apps with live UP/DOWN status, availability % (24h/7d/30d),
   response-time charts, run history, screenshot gallery, incident timeline.
 - **On-demand screenshot** — one click captures the landing page *right now*.
-- **Alerting** — email (SMTP), Slack/Discord webhooks, and generic JSON webhooks on
-  down/recovery, with a configurable consecutive-failure threshold. Signing secrets and
-  SMTP passwords are encrypted at rest.
+- **Alerting** — email (SMTP), Slack/Discord/Mattermost webhooks, and generic JSON
+  webhooks on down/recovery, with a configurable consecutive-failure threshold. A webhook
+  channel can POST a payload you define, so it can drive anything that accepts JSON.
+  Signing secrets and SMTP passwords are encrypted at rest.
 - **Session login** — for targets behind a normal login form: Vyzus signs in with a
   real browser first, so the check runs against the authenticated page rather than the
   login screen. Credentials are encrypted at rest.
@@ -93,8 +94,11 @@ run, and the screenshot history behind it.
 
 ![Application detail — availability windows and the response-time chart](docs/images/app-detail.png)
 
-**Alerting.** Email over SMTP, Slack and Discord webhooks, or a generic JSON webhook
-signed with HMAC-SHA256. Credentials are encrypted at rest and never returned by the API.
+**Alerting.** Email over SMTP, ready-made formats for Slack, Discord and Mattermost, or a
+generic JSON webhook signed with HMAC-SHA256. A webhook channel can also carry a payload
+template — the exact body to POST, with `{{placeholders}}` filled from the alert — so it
+can drive a service Vyzus has never heard of. Credentials are encrypted at rest and never
+returned by the API.
 
 ![Creating an alert channel](docs/images/alert-channel.png)
 

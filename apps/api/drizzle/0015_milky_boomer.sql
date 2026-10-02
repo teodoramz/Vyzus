@@ -1,0 +1,1 @@
+ALTER TYPE "public"."channel_type" ADD VALUE 'mattermost' BEFORE 'webhook';

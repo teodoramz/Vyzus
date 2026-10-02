@@ -1,17 +1,29 @@
 import { z } from 'zod';
 import { CHANNEL_TYPES, ALERT_EVENTS, DELIVERY_STATUSES } from '../constants.js';
 import { accountIdentifierOutSchema, isoTimestamp, uuidSchema } from './common.js';
+import { validateAlertTemplate } from '../alert-template.js';
 import { isAllowedWebhookUrl, BLOCKED_WEBHOOK_HOST_MESSAGE } from '../webhook-host.js';
 
 export const channelTypeSchema = z.enum(CHANNEL_TYPES);
 
-/** slack / discord / webhook — everything delivered by an HTTP POST. */
+/** slack / discord / mattermost / webhook — everything delivered by an HTTP POST. */
 export const webhookChannelConfigSchema = z.object({
   // Checked here rather than at delivery so the rejection is a 400 on the
   // request that introduced it, not a silent failure hours later.
   url: z.string().url().max(2000).refine(isAllowedWebhookUrl, { message: BLOCKED_WEBHOOK_HOST_MESSAGE }),
   /** HMAC-SHA256 signing secret; generic `webhook` channels only. */
   secret: z.string().min(1).max(500).optional(),
+  /**
+   * Exact JSON body to POST, with `{{placeholders}}`; generic `webhook` only.
+   * Absent means the raw alert payload, which is what it has always sent.
+   */
+  template: z
+    .string()
+    .max(8000)
+    .optional()
+    .refine((t) => t === undefined || validateAlertTemplate(t).ok, {
+      message: 'Template must produce valid JSON once its placeholders are filled',
+    }),
 });
 export type WebhookChannelConfig = z.infer<typeof webhookChannelConfigSchema>;
 
@@ -65,6 +77,7 @@ const channelBaseFields = {
 export const createChannelBodySchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('slack'), config: webhookChannelConfigSchema, ...channelBaseFields }),
   z.object({ type: z.literal('discord'), config: webhookChannelConfigSchema, ...channelBaseFields }),
+  z.object({ type: z.literal('mattermost'), config: webhookChannelConfigSchema, ...channelBaseFields }),
   z.object({ type: z.literal('webhook'), config: webhookChannelConfigSchema, ...channelBaseFields }),
   z.object({ type: z.literal('email'), config: emailChannelConfigSchema, ...channelBaseFields }),
 ]);
