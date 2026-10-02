@@ -1,13 +1,13 @@
 import { z } from 'zod';
 import { USER_ROLES } from '../constants.js';
-import { isoTimestamp, uuidSchema } from './common.js';
+import { accountIdentifierOutSchema, accountIdentifierSchema, isoTimestamp, uuidSchema } from './common.js';
 
 export const roleSchema = z.enum(USER_ROLES);
 
 /** Public user shape (never includes password/refresh hashes). */
 export const userSchema = z.object({
   id: uuidSchema,
-  email: z.string().email(),
+  email: accountIdentifierOutSchema,
   role: roleSchema,
   createdAt: isoTimestamp,
   updatedAt: isoTimestamp,
@@ -17,7 +17,7 @@ export type User = z.infer<typeof userSchema>;
 export const passwordSchema = z.string().min(8).max(200);
 
 export const createUserBodySchema = z.object({
-  email: z.string().email().toLowerCase(),
+  email: accountIdentifierSchema,
   password: passwordSchema,
   role: roleSchema,
 });

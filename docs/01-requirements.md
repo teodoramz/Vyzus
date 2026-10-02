@@ -69,6 +69,12 @@
     One bad run leaves the application `UP`, so a badge never reports an outage
     nobody was alerted about, and a blip that recovers never leaves an app
     `DEGRADED` behind it.
+- FR-1.6 **Account identifier**: a user signs in with an email address *or* a plain
+  username (`host01.internal7`). Nothing ever sends mail to this value — alerts go to an
+  alert channel's own recipient list — so requiring a domain only locked out
+  deployments that issue usernames rather than addresses. An entry containing `@` is
+  still validated as an address, so a typo is caught rather than accepted as a
+  username. Trimmed and lower-cased, so it identifies one account however it is typed.
 - FR-1.4 **Login throttling**: `POST /auth/login` refuses further attempts with `429`
   and a `Retry-After` header once 8 failures accumulate inside 15 minutes. Two
   independent counters, either of which can lock: one per email address (one account

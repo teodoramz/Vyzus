@@ -228,6 +228,38 @@ describe('refresh rotation', () => {
     expect(afterLogout.statusCode).toBe(401);
   });
 
+  // Not every deployment issues addresses; an internal account can be a plain
+  // username. Nothing mails this value, so a domain was never needed.
+  it('accepts a username as the account identifier', async () => {
+    const create = await ctx.app.inject({
+      method: 'POST',
+      url: '/api/v1/users',
+      headers: authHeader(adminToken),
+      payload: { email: 'host01.internal7', password: 'unit-password-1', role: 'viewer' },
+    });
+    expect(create.statusCode).toBe(201);
+    expect(create.json().email).toBe('host01.internal7');
+
+    const session = await login(ctx.app, 'host01.internal7', 'unit-password-1');
+    expect(session.accessToken).toBeTruthy();
+
+    // Case and surrounding space are normalised, so the same person signing in
+    // as "HOST01.Internal7" reaches the same account.
+    expect((await login(ctx.app, '  HOST01.Internal7  ', 'unit-password-1')).accessToken).toBeTruthy();
+  });
+
+  it('still rejects a malformed address', async () => {
+    for (const email of ['a@b', 'not an email', 'ab', '.leading', 'trailing.']) {
+      const res = await ctx.app.inject({
+        method: 'POST',
+        url: '/api/v1/users',
+        headers: authHeader(adminToken),
+        payload: { email, password: 'unit-password-1', role: 'viewer' },
+      });
+      expect(res.statusCode, email).toBe(400);
+    }
+  });
+
   it('rejects refresh with no cookie', async () => {
     const res = await ctx.app.inject({ method: 'POST', url: '/api/v1/auth/refresh' });
     expect(res.statusCode).toBe(401);

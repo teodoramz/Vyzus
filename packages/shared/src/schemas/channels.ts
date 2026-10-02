@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { CHANNEL_TYPES, ALERT_EVENTS, DELIVERY_STATUSES } from '../constants.js';
-import { isoTimestamp, uuidSchema } from './common.js';
+import { accountIdentifierOutSchema, isoTimestamp, uuidSchema } from './common.js';
 import { isAllowedWebhookUrl, BLOCKED_WEBHOOK_HOST_MESSAGE } from '../webhook-host.js';
 
 export const channelTypeSchema = z.enum(CHANNEL_TYPES);
@@ -113,7 +113,7 @@ export const channelSchema = z.object({
   // the creating user has since been deleted or the channel predates this
   // field.
   createdBy: uuidSchema.nullable(),
-  createdByEmail: z.string().email().nullable(),
+  createdByEmail: accountIdentifierOutSchema.nullable(),
   createdAt: isoTimestamp,
   updatedAt: isoTimestamp,
 });

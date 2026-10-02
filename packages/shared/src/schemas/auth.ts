@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { accountIdentifierSchema } from './common.js';
 import { userSchema, passwordSchema } from './users.js';
 
 export const loginBodySchema = z.object({
-  email: z.string().email().toLowerCase(),
+  email: accountIdentifierSchema,
   password: z.string().min(1).max(200),
 });
 export type LoginBody = z.infer<typeof loginBodySchema>;
@@ -36,7 +37,7 @@ export type SetupStatusResponse = z.infer<typeof setupStatusResponseSchema>;
  * necessity (there is nobody to authenticate as yet), so the route is hard
  * -gated on the users table being empty and returns 409 otherwise. */
 export const setupBodySchema = z.object({
-  email: z.string().email().toLowerCase(),
+  email: accountIdentifierSchema,
   password: passwordSchema,
 });
 export type SetupBody = z.infer<typeof setupBodySchema>;

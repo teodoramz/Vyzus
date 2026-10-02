@@ -60,13 +60,15 @@ export function Setup(): JSX.Element {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="setup-email" className={labelClass}>
-              Email
+              Email or username
             </label>
             <input
               id="setup-email"
-              type="email"
+              type="text"
               required
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClass}

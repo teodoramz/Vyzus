@@ -63,13 +63,15 @@ export function Login(): JSX.Element {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="email" className={labelClass}>
-              Email
+              Email or username
             </label>
             <input
               id="email"
-              type="email"
+              type="text"
               required
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className={inputClass}
