@@ -20,7 +20,7 @@
     "bullmq": "5.80.2",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.11.2",
-    "fastify-type-provider-zod": "^4.0.2",
+    "fastify-type-provider-zod": "^7.0.0",
     "ioredis": "^5.11.1",
     "jose": "^5.10.0",
     "nodemailer": "^9.0.5",
