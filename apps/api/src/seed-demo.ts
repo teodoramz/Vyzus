@@ -46,7 +46,9 @@ const DEMO: DemoApp[] = [
           maxDurationMs: 0,
           visualDiffPercent: 0,
           certExpiryWarningDays: 0,
-          bodyText: 'Example Domain',
+          // Asserts the <title>, not body text: example.com rewrote its body
+          // copy and any demo pinned to a phrase in it fails from then on.
+          title: 'Example Domain',
           screenshot: 'always',
         },
       },
