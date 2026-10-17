@@ -256,10 +256,10 @@ the Actions tab checks any branch and skips path filtering, executing every job.
   the full integration test suite (real Postgres/Redis/BullMQ/Chromium), all three
   Docker images, and a guard that the Playwright version stays in lockstep with the
   worker image tag. Documentation-only changes skip the expensive jobs.
-- **Security** (push to main, pull requests, weekly, manual) — CodeQL static analysis, `pnpm audit`
-  (fails on high/critical), PR dependency review, gitleaks secret scan, and Trivy
-  scans of all three images plus the source tree. The weekly run is what catches a
-  CVE published against a dependency nobody touched.
+- **Security** (push to main, pull requests, weekly, manual) — CodeQL static analysis,
+  PR dependency review, gitleaks secret scan, and Trivy scans of all three images plus
+  the source tree. The weekly run is what catches a CVE published against a dependency
+  nobody touched.
 - **Release** (semver tag, manual) — re-runs lint, format, build, typecheck, the
   full test suite and the Playwright lockstep guard against the tagged commit before
   publishing anything. A tag can point at any commit, so nothing is taken on trust.
