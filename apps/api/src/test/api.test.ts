@@ -228,26 +228,6 @@ describe('refresh rotation', () => {
     expect(afterLogout.statusCode).toBe(401);
   });
 
-  // Not every deployment issues addresses; an internal account can be a plain
-  // username. Nothing mails this value, so a domain was never needed.
-  it('accepts a username as the account identifier', async () => {
-    const create = await ctx.app.inject({
-      method: 'POST',
-      url: '/api/v1/users',
-      headers: authHeader(adminToken),
-      payload: { email: 'host01.internal7', password: 'unit-password-1', role: 'viewer' },
-    });
-    expect(create.statusCode).toBe(201);
-    expect(create.json().email).toBe('host01.internal7');
-
-    const session = await login(ctx.app, 'host01.internal7', 'unit-password-1');
-    expect(session.accessToken).toBeTruthy();
-
-    // Case and surrounding space are normalised, so the same person signing in
-    // as "HOST01.Internal7" reaches the same account.
-    expect((await login(ctx.app, '  HOST01.Internal7  ', 'unit-password-1')).accessToken).toBeTruthy();
-  });
-
   // Zod's own .email() requires the last domain label to be letters, which
   // rejects a real address on an internal network.
   it('accepts an address whose domain ends in digits', async () => {
@@ -273,6 +253,7 @@ describe('refresh rotation', () => {
       'admin@gmailcom', // the typo this check exists to catch
       'admin@-bad.ro',
       '@example.ro',
+      'host01.internal7', // a bare username is not an address
     ]) {
       const res = await ctx.app.inject({
         method: 'POST',

@@ -156,11 +156,11 @@ function NewUserModal({ onClose }: { onClose: () => void }): JSX.Element {
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label htmlFor="new-user-email" className={labelClass}>
-            Email or username
+            Email
           </label>
           <input
             id="new-user-email"
-            type="text"
+            type="email"
             required
             autoCapitalize="none"
             spellCheck={false}
