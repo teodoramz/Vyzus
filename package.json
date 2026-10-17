@@ -19,11 +19,6 @@
   "pnpm": {
     "overrides": {
       "ioredis": "^5.11.1"
-    },
-    "auditConfig": {
-      "ignoreGhsas": [
-        "GHSA-qwww-vcr4-c8h2"
-      ]
     }
   },
   "devDependencies": {
