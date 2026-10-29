@@ -1,75 +1,76 @@
-# Vyzus — User-Simulation & Synthetic Monitoring Platform
+# Vyzus - User-Simulation & Synthetic Monitoring Platform
 
 [![CI](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/teodoramz/Vyzus/actions/workflows/ci.yml)
 [![Security](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml/badge.svg?branch=main)](https://github.com/teodoramz/Vyzus/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![XERJ Corpus Hub contributor](https://hub.xerj.org/contributors/teodoramz/badge.svg)](https://hub.xerj.org/contributors/teodoramz)
 
 Vyzus drives a real Chromium browser against your applications on a schedule,
 simulating what a user actually does, and tells you the moment something breaks.
-It monitors HTTP services, raw TCP/UDP ports, ICMP reachability, DNS records and TLS
+It monitors HTTP services, raw TCP/UDP ports, ICMP reachability, DNS records a
 certificates, runs recorded
 **Playwright** user journeys, and gives you a dashboard with live status,
 response-time metrics, screenshots, incident history and alerting.
 
-![Vyzus overview — every enrolled application with its status, availability and recent response times](docs/images/dashboard.png)
+![Vyzus overview - every enrolled application with its status, availability and recent response times](docs/images/dashboard.png)
 
 ## What it does
 
-- **Enroll web applications** — name, landing URL, tags, optional encrypted credentials.
+- **Enroll web applications** - name, landing URL, tags, optional encrypted credentials.
 - **Three kinds of checks per application:**
   - **Uptime check**, in any of four modes:
-    - `http` — loads the page in a real browser, asserts HTTP status / CSS selector /
+    - `http` - loads the page in a real browser, asserts HTTP status / CSS selector /
       body text / page title, records timing metrics (TTFB, DOMContentLoaded, full
       load), warns before the TLS certificate expires, and takes a screenshot.
-    - `port` — a raw TCP or UDP reachability probe against any host and port, with
+    - `port` - a raw TCP or UDP reachability probe against any host and port, with
       one-click presets for common services and an optional forced IPv4/IPv6 family.
       TCP ports can additionally perform a **TLS handshake and validate the
       certificate** (trust chain, expiry, hostname), warn a configurable number of days
       before that certificate expires, and an opt-in escape hatch for deliberately
       self-signed internal services.
-    - `ping` — ICMP echo: is the host reachable *at all*, which a port probe cannot
+    - `ping` - ICMP echo: is the host reachable *at all*, which a port probe cannot
       answer, since a machine with every port closed is still up. Optional packet-loss
       and round-trip limits. Uses unprivileged ICMP, so it needs no extra container
       capability.
-    - `dns` — resolve a record (A/AAAA/CNAME/MX/TXT/NS), optionally against a specific
+    - `dns` - resolve a record (A/AAAA/CNAME/MX/TXT/NS), optionally against a specific
       resolver, and assert what comes back. Catches the expired domain or botched record
       change that an HTTP check run from a machine with a warm cache cannot see.
-  - **Heartbeat (push)** — for jobs Vyzus cannot reach: a cron job, backup script or
+  - **Heartbeat (push)** - for jobs Vyzus cannot reach: a cron job, backup script or
     host behind NAT `curl`s a token URL on success, and the check fails when nothing
     arrives within its interval plus a grace allowance.
-  - **User journey** — a full Playwright test (recorded with `playwright codegen` or
+  - **User journey** - a full Playwright test (recorded with `playwright codegen` or
     hand-written) uploaded/edited in the dashboard, simulating a real user flow
     (login, search, checkout, …). A failing journey never marks the application
-    itself down — a broken login flow is not a dead landing page.
-- **Scheduler** — every check runs on its own interval (e.g. every 5 minutes),
+    itself down - a broken login flow is not a dead landing page.
+- **Scheduler** - every check runs on its own interval (e.g. every 5 minutes),
   with jitter and concurrency limits.
-- **Dashboard** — grid of all apps with live UP/DOWN status, availability % (24h/7d/30d),
+- **Dashboard** - grid of all apps with live UP/DOWN status, availability % (24h/7d/30d),
   response-time charts, run history, screenshot gallery, incident timeline.
-- **On-demand screenshot** — one click captures the landing page *right now*.
-- **Alerting** — email (SMTP), Slack/Discord/Mattermost webhooks, and generic JSON
+- **On-demand screenshot** - one click captures the landing page *right now*.
+- **Alerting** - email (SMTP), Slack/Discord/Mattermost webhooks, and generic JSON
   webhooks on down/recovery, with a configurable consecutive-failure threshold. A webhook
   channel can POST a payload you define, so it can drive anything that accepts JSON.
   Signing secrets and SMTP passwords are encrypted at rest.
-- **Session login** — for targets behind a normal login form: Vyzus signs in with a
+- **Session login** - for targets behind a normal login form: Vyzus signs in with a
   real browser first, so the check runs against the authenticated page rather than the
   login screen. Credentials are encrypted at rest.
-- **Visual regression** — optionally fail a check when the page changes by more than
+- **Visual regression** - optionally fail a check when the page changes by more than
   a set percentage of pixels, catching defacement and blank-page deploys that still
   return HTTP 200.
-- **Maintenance windows** — suppress alerts during planned work without pausing checks.
-- **Dependency suppression** — mark an application as sitting behind another; while the
+- **Maintenance windows** - suppress alerts during planned work without pausing checks.
+- **Dependency suppression** - mark an application as sitting behind another; while the
   upstream is down, everything behind it stays quiet instead of paging once per service.
-- **Public status page** — an unauthenticated `/status` view of the applications you
+- **Public status page** - an unauthenticated `/status` view of the applications you
   explicitly publish: name, status and uptime only, never URLs or error text. Cached for
   30 seconds and rate-limited, so publishing it does not expose the database to load.
-- **Dead-man's switch** — alerts if the platform itself stops running checks. It cannot
-  report its own API being down, so pair it with an external check on `/api/v1/health` —
+- **Dead-man's switch** - alerts if the platform itself stops running checks. It cannot
+  report its own API being down, so pair it with an external check on `/api/v1/health` -
   see [Monitoring the monitor](docs/05-infrastructure.md#monitoring-the-monitor).
-- **API tokens** — scoped, revocable credentials so CI never holds a human's password.
-- **Failure artifacts** — screenshot, Playwright trace, and error details for every failed run.
-- **Roles** — `admin`, `editor`, and `viewer` (read/run only, scoped to explicitly
+- **API tokens** - scoped, revocable credentials so CI never holds a human's password.
+- **Failure artifacts** - screenshot, Playwright trace, and error details for every failed run.
+- **Roles** - `admin`, `editor`, and `viewer` (read/run only, scoped to explicitly
   assigned applications, enforced server-side).
-- **Realistic browser fingerprint** — real User-Agent, viewport, locale and timezone
+- **Realistic browser fingerprint** - real User-Agent, viewport, locale and timezone
   with Chromium's automation flags suppressed, so monitored sites serve the real page
   rather than a bot challenge.
 
@@ -77,33 +78,33 @@ response-time metrics, screenshots, incident history and alerting.
 
 **Checks.** An uptime check probes one of four ways: an HTTP(S) request in a real
 browser, a raw TCP/UDP port, an ICMP ping, or a DNS record. Each mode brings its own
-assertions — expected status and page content for HTTP, a TLS handshake for a port,
+assertions - expected status and page content for HTTP, a TLS handshake for a port,
 packet loss for a ping, expected values for a record.
 
-![Creating a check — the four uptime modes, with the DNS options shown](docs/images/check-modes.png)
+![Creating a check - the four uptime modes, with the DNS options shown](docs/images/check-modes.png)
 
 **User journeys.** A journey is an ordinary Playwright script, recorded with
 `playwright codegen` or written by hand, edited in the browser and run on a schedule
 in a sandboxed container. A failing journey degrades the application; it never marks
 the landing page down.
 
-![Editing a journey check — a Playwright script in the built-in editor](docs/images/journey-editor.png)
+![Editing a journey check - a Playwright script in the built-in editor](docs/images/journey-editor.png)
 
 **Per-application detail.** Availability over three windows, response time across every
 run, and the screenshot history behind it.
 
-![Application detail — availability windows and the response-time chart](docs/images/app-detail.png)
+![Application detail - availability windows and the response-time chart](docs/images/app-detail.png)
 
 **Alerting.** Email over SMTP, ready-made formats for Slack, Discord and Mattermost, or a
 generic JSON webhook signed with HMAC-SHA256. A webhook channel can also carry a payload
-template — the exact body to POST, with `{{placeholders}}` filled from the alert — so it
+template - the exact body to POST, with `{{placeholders}}` filled from the alert - so it
 can drive a service Vyzus has never heard of. Credentials are encrypted at rest and never
 returned by the API.
 
 ![Creating an alert channel](docs/images/alert-channel.png)
 
 **Public status page.** An unauthenticated view of the applications you explicitly
-publish — names, status and uptime only, never URLs or error text.
+publish - names, status and uptime only, never URLs or error text.
 
 ![The public status page](docs/images/status-page.png)
 
@@ -113,7 +114,7 @@ publish — names, status and uptime only, never URLs or error text.
 |---|---|
 | Language | TypeScript everywhere (monorepo, pnpm workspaces) |
 | API | Fastify + Zod + JWT auth |
-| Scheduler / queue | BullMQ (Redis) — repeatable jobs per check |
+| Scheduler / queue | BullMQ (Redis) - repeatable jobs per check |
 | Check execution | Playwright workers (official Playwright Docker image) |
 | Database | PostgreSQL 16 + Drizzle ORM |
 | Dashboard | React + Vite + Tailwind + Recharts, Monaco editor for tests |
@@ -145,9 +146,9 @@ publish — names, status and uptime only, never URLs or error text.
 ```bash
 cp .env.example .env
 # then edit .env:
-#   POSTGRES_PASSWORD  — any strong value
-#   JWT_SECRET         — e.g. openssl rand -hex 48
-#   ENCRYPTION_KEY     — exactly:  openssl rand -hex 32
+#   POSTGRES_PASSWORD  - any strong value
+#   JWT_SECRET         - e.g. openssl rand -hex 48
+#   ENCRYPTION_KEY     - exactly:  openssl rand -hex 32
 
 docker compose up -d --build
 # dashboard: http://localhost:8080
@@ -156,14 +157,14 @@ docker compose up -d --build
 The API migrates the database on boot. On first visit the dashboard shows a
 **setup screen** where you create the initial administrator. There is no default
 account and no admin password in the environment, so a freshly deployed instance
-has no credentials to guess — the first person to reach it claims it, and setup
+has no credentials to guess - the first person to reach it claims it, and setup
 is permanently closed afterwards.
 
 Enroll an application in the dashboard and it arrives already monitored: a landing
-uptime check, a DNS resolution check, and — for `https://` targets — a TLS certificate
+uptime check, a DNS resolution check, and - for `https://` targets - a TLS certificate
 check with a 14-day expiry warning. The first runs appear live within their intervals.
 
-Defaults are chosen so they pass on day one for a healthy target — one that cries wolf
+Defaults are chosen so they pass on day one for a healthy target - one that cries wolf
 immediately just teaches you to ignore the badge. So no ping check is created (ICMP is
 blocked by most CDNs, and it would report a healthy site as unreachable), and the TLS
 check does not enforce chain trust, which means a self-signed internal service passes.
@@ -181,7 +182,7 @@ docker compose -f docker-compose.yml -f docker-compose.tls.yml up -d --build
 # 443 serves the app; 80 redirects to it
 ```
 
-`infra/certs/` is gitignored. Without the override nothing changes — plain HTTP on
+`infra/certs/` is gitignored. Without the override nothing changes - plain HTTP on
 `8080` still works for local development. Full walkthrough, including Let's Encrypt
 and self-signed pairs, in
 [`docs/05-infrastructure.md`](docs/05-infrastructure.md#https).
@@ -189,7 +190,7 @@ and self-signed pairs, in
 ### Demo data
 
 Seed three demo applications (healthy example.com, a guaranteed-DOWN target that
-demonstrates incidents + alerts, and one with a journey check). Idempotent —
+demonstrates incidents + alerts, and one with a journey check). Idempotent -
 safe to run more than once:
 
 ```bash
@@ -223,7 +224,7 @@ VYZUS_API_URL=http://localhost:8080/api/v1 VYZUS_TOKEN=vyz_... \
   pnpm sync-targets            # add --dry-run to preview, --prune to delete stragglers
 ```
 
-`VYZUS_TOKEN` is an **API token** — scoped, revocable, and created from the
+`VYZUS_TOKEN` is an **API token** - scoped, revocable, and created from the
 dashboard or `POST /api/v1/tokens`. It acts as the user who created it, with the
 same role and application access, so a CI pipeline never needs a human's
 password. `VYZUS_EMAIL` + `VYZUS_PASSWORD` still work for interactive one-offs.
@@ -235,13 +236,13 @@ See [`targets/README.md`](targets/README.md) for the file format and
 
 | Document | Contents |
 |---|---|
-| [01 — Requirements](docs/01-requirements.md) | Numbered functional and non-functional requirements |
-| [02 — Architecture](docs/02-architecture.md) | Components, queues, data flow, and the journey-sandbox security model |
-| [03 — Data model](docs/03-data-model.md) | The exact PostgreSQL schema |
-| [04 — API specification](docs/04-api-spec.md) | REST and WebSocket contract, alert payloads |
-| [05 — Infrastructure](docs/05-infrastructure.md) | Compose, images, volumes, environment, operations |
-| [06 — Implementation plan](docs/06-implementation-plan.md) | How the build was staged; kept as a historical record |
-| [07 — User guide](docs/07-user-guide.md) | Day-to-day use: adding targets, writing checks, reading the dashboard |
+| [01 - Requirements](docs/01-requirements.md) | Numbered functional and non-functional requirements |
+| [02 - Architecture](docs/02-architecture.md) | Components, queues, data flow, and the journey-sandbox security model |
+| [03 - Data model](docs/03-data-model.md) | The exact PostgreSQL schema |
+| [04 - API specification](docs/04-api-spec.md) | REST and WebSocket contract, alert payloads |
+| [05 - Infrastructure](docs/05-infrastructure.md) | Compose, images, volumes, environment, operations |
+| [06 - Implementation plan](docs/06-implementation-plan.md) | How the build was staged; kept as a historical record |
+| [07 - User guide](docs/07-user-guide.md) | Day-to-day use: adding targets, writing checks, reading the dashboard |
 
 Start with the [user guide](docs/07-user-guide.md) if you want to run it, or
 [architecture](docs/02-architecture.md) if you want to understand it.
@@ -249,21 +250,21 @@ Start with the [user guide](docs/07-user-guide.md) if you want to run it, or
 ## CI
 
 Workflows run on every push to `main`, on pull requests, and on demand, so every
-commit gets a verdict — including one that never went through a PR. *Run workflow* in
+commit gets a verdict - including one that never went through a PR. *Run workflow* in
 the Actions tab checks any branch and skips path filtering, executing every job.
 
-- **CI** (push to main, pull requests, manual) — ESLint + Prettier, build, strict typecheck, and
+- **CI** (push to main, pull requests, manual) - ESLint + Prettier, build, strict typecheck, and
   the full integration test suite (real Postgres/Redis/BullMQ/Chromium), all three
   Docker images, and a guard that the Playwright version stays in lockstep with the
   worker image tag. Documentation-only changes skip the expensive jobs.
-- **Security** (push to main, pull requests, weekly, manual) — CodeQL static analysis,
+- **Security** (push to main, pull requests, weekly, manual) - CodeQL static analysis,
   PR dependency review, gitleaks secret scan, and Trivy scans of all three images plus
   the source tree. The weekly run is what catches a CVE published against a dependency
   nobody touched.
-- **Release** (semver tag, manual) — re-runs lint, format, build, typecheck, the
+- **Release** (semver tag, manual) - re-runs lint, format, build, typecheck, the
   full test suite and the Playwright lockstep guard against the tagged commit before
   publishing anything. A tag can point at any commit, so nothing is taken on trust.
-- **Dependabot** — weekly npm/Actions/Docker updates. Four things are deliberately
+- **Dependabot** - weekly npm/Actions/Docker updates. Four things are deliberately
   held back: `playwright` and its Docker image (version-locked to each other, bump
   both by hand), `bullmq` (5.81.3 loses job keys mid-run), and node majors (24 is
   LTS; 25 unbundled corepack). Everything else is expected to go green on its own.
