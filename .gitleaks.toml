@@ -9,5 +9,5 @@ useDefault = true
 description = "Ignore mock secrets in test folders"
 
 paths = [
-  '''^apps/*/src/test/.*'''
+  '''^apps/[^/]+/src/test/'''
 ]
