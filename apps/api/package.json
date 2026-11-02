@@ -13,13 +13,13 @@
     "seed": "tsx src/seed-demo.ts"
   },
   "dependencies": {
-    "@fastify/cookie": "^11.1.2",
-    "@fastify/websocket": "^11.3.0",
+    "@fastify/cookie": "^11.1.5",
+    "@fastify/websocket": "^11.3.4",
     "@vyzus/shared": "workspace:*",
     "argon2": "^0.45.1",
     "bullmq": "5.80.2",
-    "drizzle-orm": "^0.45.2",
-    "fastify": "^5.11.2",
+    "drizzle-orm": "^0.45.4",
+    "fastify": "^5.12.7",
     "fastify-type-provider-zod": "^4.0.2",
     "ioredis": "^5.11.1",
     "jose": "^5.10.0",
@@ -29,17 +29,17 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.6.6",
     "@types/nodemailer": "^8.0.1",
     "@types/smtp-server": "^3.5.13",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "@vyzus/worker": "workspace:*",
-    "drizzle-kit": "^0.31.10",
-    "smtp-server": "^3.19.3",
+    "drizzle-kit": "^0.31.11",
+    "smtp-server": "^3.21.3",
     "tsup": "^8.5.1",
-    "tsx": "^4.23.11",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10",
-    "ws": "^8.21.3"
+    "ws": "^8.22.0"
   }
 }
