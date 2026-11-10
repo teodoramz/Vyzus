@@ -5,7 +5,7 @@ title = "Vyzus"
 [extend]
 useDefault = true
 
-[[allowlists]]
+[allowlists]
 description = "Ignore mock secrets in test folders"
 
 paths = [
